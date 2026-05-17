@@ -3,8 +3,11 @@
 > **Treasury standard for AI agents on Base mainnet.** A Model Context Protocol (MCP) server that lets autonomous agents hold capital in GBLIN — a diversified, Crash-Shield-protected on-chain index — and Just-In-Time swap to USDC the millisecond they need to pay an [x402](https://docs.cdp.coinbase.com/x402/welcome) invoice.
 
 [![npm](https://img.shields.io/npm/v/@gblin/mcp-server.svg)](https://www.npmjs.com/package/@gblin/mcp-server)
+[![CI](https://github.com/gblinproject/GBLIN-MCP/actions/workflows/ci.yml/badge.svg)](https://github.com/gblinproject/GBLIN-MCP/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Base Mainnet](https://img.shields.io/badge/network-Base%20mainnet-0052FF)](https://basescan.org/address/0x38DcDB3A381677239BBc652aed9811F2f8496345)
+
+📖 **Full documentation and Quick Start:** [gblin.digital/agents](https://gblin.digital/agents)
 
 ---
 
@@ -22,7 +25,7 @@ This server exposes that capability to any LLM agent through the standard MCP pr
 
 ### Claude Desktop
 
-Add to `claude_desktop_config.json`:
+Add to `claude_desktop_config.json` (on Windows: `%APPDATA%\Claude\claude_desktop_config.json`):
 
 ```json
 {
@@ -36,6 +39,26 @@ Add to `claude_desktop_config.json`:
 ```
 
 Restart Claude Desktop. The 5 GBLIN tools appear in the tool picker.
+
+### Windsurf / Cursor
+
+Add to `~/.codeium/windsurf/mcp_config.json` (Windsurf) or the equivalent Cursor MCP config:
+
+```json
+{
+  "mcpServers": {
+    "gblin": {
+      "command": "npx",
+      "args": ["-y", "@gblin/mcp-server"],
+      "env": {
+        "GBLIN_RPC_URL": "https://base-rpc.publicnode.com"
+      }
+    }
+  }
+}
+```
+
+Refresh MCP servers from the IDE settings (or restart). The tools become callable inline.
 
 ### Coinbase AgentKit (TypeScript)
 
@@ -68,6 +91,8 @@ Any framework that speaks MCP over stdio works:
 npx @gblin/mcp-server
 ```
 
+Also supports Cline, Continue.dev, and any agent that implements the MCP client spec.
+
 ---
 
 ## The 5 tools
@@ -81,6 +106,8 @@ npx @gblin/mcp-server
 | `analyze_treasury_health` | Balances + gas + runway + rebalance advice |
 
 All tools return structured JSON. All values are quoted on-chain (NAV via `quoteSellGBLIN` × Chainlink ETH/USD, with 24h staleness guard). No mock data.
+
+**Live verification:** the test suite (`npm test`) runs all five tools against Base mainnet and confirms calldata generation, oracle freshness, and slippage math. See the [latest CI run](https://github.com/gblinproject/GBLIN-MCP/actions).
 
 ---
 
