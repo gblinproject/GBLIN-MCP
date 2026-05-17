@@ -28,6 +28,7 @@ Thumbs.db
 # Internal docs (kept local, never pushed)
 AGENTIC_SPEC.md
 HANDOFF.md
+submissions/
 
 # Test artifacts
 coverage/
