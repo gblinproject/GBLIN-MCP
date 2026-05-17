@@ -1,0 +1,66 @@
+{
+  "name": "@gblin/mcp-server",
+  "version": "0.1.0",
+  "description": "Model Context Protocol server for GBLIN \u2014 Treasury Standard for AI Agents on Base mainnet. Provides on-chain quotes, JIT swaps, and treasury analytics for x402-paying agents.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "gblin-mcp": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "llms.txt"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "test": "tsx scripts/test.ts",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "gblin",
+    "base",
+    "base-mainnet",
+    "defi",
+    "ai-agents",
+    "agent-treasury",
+    "x402",
+    "coinbase-agentkit",
+    "eliza",
+    "jit-swap",
+    "chainlink",
+    "uniswap"
+  ],
+  "author": "GBLIN Protocol",
+  "license": "MIT",
+  "homepage": "https://gblin.digital/agents",
+  "bugs": {
+    "url": "https://github.com/gblinproject/GBLIN-MCP/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gblinproject/GBLIN-MCP.git"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "viem": "^2.21.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.4"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

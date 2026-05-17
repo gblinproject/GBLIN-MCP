@@ -1,0 +1,52 @@
+# GBLIN MCP Server
+
+> Treasury standard for autonomous AI agents on Base mainnet. Provides
+> on-chain quotes, Just-In-Time GBLIN→USDC swaps for x402 payments, and
+> treasury analytics through the Model Context Protocol.
+
+GBLIN is an algorithmic on-chain index on Base (45% cbBTC / 45% WETH / 10%
+USDC) with an automated Crash Shield that reduces risk-asset exposure during
+>20% drawdowns. Designed as a yielding alternative to holding pure USDC for
+AI agent operating capital.
+
+## Why agents use GBLIN
+
+- **Treasury yield**: holding GBLIN earns basket appreciation vs flat USDC
+- **JIT compatible**: native `sellGBLINForToken(USDC)` works in a single
+  atomic tx on any wallet (EOA, ERC-4337, EIP-7702)
+- **MEV-safe quotes**: every tool returns positive `minOut` values from
+  on-chain quotes + dynamic slippage (never accepts 0)
+- **Oracle-verified prices**: NAV is computed from `quoteSellGBLIN` × the
+  Chainlink ETH/USD feed with 24h staleness guard
+
+## Installation
+
+```bash
+npx @gblin/mcp-server
+```
+
+Claude Desktop config:
+
+```json
+{
+  "mcpServers": {
+    "gblin": { "command": "npx", "args": ["-y", "@gblin/mcp-server"] }
+  }
+}
+```
+
+## Tools
+
+1. `get_treasury_state` — NAV, basket composition, Crash Shield status
+2. `quote_safe_swap` — preview buy/sell with dynamic slippage buffer
+3. `swap_gblin_to_usdc_jit` — generate calldata for x402 JIT payments
+4. `invest_usdc_to_gblin` — convert USDC earnings back to GBLIN treasury
+5. `analyze_treasury_health` — balances, gas, runway, rebalance advice
+
+## Links
+
+- Source: https://github.com/gblinproject/GBLIN-MCP
+- Docs: https://gblin.digital/agents
+- Contract: https://basescan.org/address/0x38DcDB3A381677239BBc652aed9811F2f8496345
+- Network: Base mainnet (chain id 8453)
+- License: MIT
