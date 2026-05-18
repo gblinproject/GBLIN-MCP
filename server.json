@@ -1,7 +1,7 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
   "name": "io.github.gblinproject/gblin-mcp-server",
-  "description": "Treasury standard for AI agents on Base mainnet. Lets autonomous agents hold capital in GBLIN — a diversified, Crash-Shield-protected on-chain index — and Just-In-Time swap to USDC the millisecond they need to pay an x402 invoice. GBLIN_V5 is owned by a 48h Timelock Controller for verifiable trust.",
+  "description": "Treasury standard for AI agents on Base: hold GBLIN, JIT-swap to USDC for x402 payments.",
   "status": "active",
   "repository": {
     "url": "https://github.com/gblinproject/GBLIN-MCP",
