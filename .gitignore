@@ -36,3 +36,9 @@ submissions/
 # Test artifacts
 coverage/
 *.tmp
+
+# MCP Publisher binary (downloaded locally, not versioned)
+mcp-publisher.exe
+mcp-publisher
+mcp-publisher_*/
+.mcppublisher/
