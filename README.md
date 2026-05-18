@@ -2,7 +2,7 @@
 
 > **Treasury standard for AI agents on Base mainnet.** A Model Context Protocol (MCP) server that lets autonomous agents hold capital in GBLIN — a diversified, Crash-Shield-protected on-chain index — and Just-In-Time swap to USDC the millisecond they need to pay an [x402](https://docs.cdp.coinbase.com/x402/welcome) invoice.
 
-[![npm](https://img.shields.io/npm/v/@gblin/mcp-server.svg)](https://www.npmjs.com/package/@gblin/mcp-server)
+[![npm](https://img.shields.io/npm/v/@gblin-protocol/mcp-server.svg)](https://www.npmjs.com/package/@gblin-protocol/mcp-server)
 [![CI](https://github.com/gblinproject/GBLIN-MCP/actions/workflows/ci.yml/badge.svg)](https://github.com/gblinproject/GBLIN-MCP/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Base Mainnet](https://img.shields.io/badge/network-Base%20mainnet-0052FF)](https://basescan.org/address/0x38DcDB3A381677239BBc652aed9811F2f8496345)
@@ -32,7 +32,7 @@ Add to `claude_desktop_config.json` (on Windows: `%APPDATA%\Claude\claude_deskto
   "mcpServers": {
     "gblin": {
       "command": "npx",
-      "args": ["-y", "@gblin/mcp-server"]
+      "args": ["-y", "@gblin-protocol/mcp-server"]
     }
   }
 }
@@ -49,7 +49,7 @@ Add to `~/.codeium/windsurf/mcp_config.json` (Windsurf) or the equivalent Cursor
   "mcpServers": {
     "gblin": {
       "command": "npx",
-      "args": ["-y", "@gblin/mcp-server"],
+      "args": ["-y", "@gblin-protocol/mcp-server"],
       "env": {
         "GBLIN_RPC_URL": "https://base-rpc.publicnode.com"
       }
@@ -68,7 +68,7 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 
 const transport = new StdioClientTransport({
   command: "npx",
-  args: ["-y", "@gblin/mcp-server"],
+  args: ["-y", "@gblin-protocol/mcp-server"],
 });
 const client = new MCPClient({ name: "my-agent", version: "1.0.0" });
 await client.connect(transport);
@@ -88,7 +88,7 @@ const jit = await client.callTool({
 Any framework that speaks MCP over stdio works:
 
 ```bash
-npx @gblin/mcp-server
+npx @gblin-protocol/mcp-server
 ```
 
 Also supports Cline, Continue.dev, and any agent that implements the MCP client spec.
@@ -151,7 +151,7 @@ For production load (>100 concurrent agents) use a dedicated provider:
 
 ```bash
 export GBLIN_RPC_URL="https://base-mainnet.g.alchemy.com/v2/YOUR_KEY"
-npx @gblin/mcp-server
+npx @gblin-protocol/mcp-server
 ```
 
 See `.env.example` for the full list.

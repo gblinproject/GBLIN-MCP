@@ -22,7 +22,7 @@ AI agent operating capital.
 ## Installation
 
 ```bash
-npx @gblin/mcp-server
+npx @gblin-protocol/mcp-server
 ```
 
 Claude Desktop config:
@@ -30,7 +30,7 @@ Claude Desktop config:
 ```json
 {
   "mcpServers": {
-    "gblin": { "command": "npx", "args": ["-y", "@gblin/mcp-server"] }
+    "gblin": { "command": "npx", "args": ["-y", "@gblin-protocol/mcp-server"] }
   }
 }
 ```
