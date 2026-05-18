@@ -19,6 +19,11 @@ export const GBLIN_V5: Address = "0x38DcDB3A381677239BBc652aed9811F2f8496345";
 export const USDC: Address = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 export const WETH: Address = "0x4200000000000000000000000000000000000006";
 
+// GblinTimelockController — owns GBLIN_V5 since block 46160610 (May 2026).
+// 48h immutable delay, 14d grace period, open executor.
+export const GBLIN_TIMELOCK: Address = "0x6aBeC8716fFeEcf7C3D6e68255b4797113E8e5Dd";
+export const EXPECTED_MIN_DELAY_SECONDS = 172_800n; // 48 hours
+
 // Chainlink ETH/USD price feed on Base
 export const ETH_USD_FEED: Address = "0x71041dddad3595F9CEd3DcCFBe3D1F4b0a16Bb70";
 

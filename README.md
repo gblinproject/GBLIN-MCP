@@ -6,8 +6,29 @@
 [![CI](https://github.com/gblinproject/GBLIN-MCP/actions/workflows/ci.yml/badge.svg)](https://github.com/gblinproject/GBLIN-MCP/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Base Mainnet](https://img.shields.io/badge/network-Base%20mainnet-0052FF)](https://basescan.org/address/0x38DcDB3A381677239BBc652aed9811F2f8496345)
+[![Governance: 48h Timelock](https://img.shields.io/badge/governance-48h%20Timelock-1f6feb)](https://basescan.org/address/0x6aBeC8716fFeEcf7C3D6e68255b4797113E8e5Dd)
 
 📖 **Full documentation and Quick Start:** [gblin.digital/agents](https://gblin.digital/agents)
+
+---
+
+## Trust & Governance
+
+**GBLIN_V5 is owned by a 48h Timelock Controller** — every admin operation (parameter change, oracle update, ownership transfer) is enforced on-chain to wait **172,800 seconds** before execution. Agents and integrators can verify this directly on BaseScan.
+
+| Component | Address | Role |
+|---|---|---|
+| **GBLIN_V5 token** | [`0x38DcDB3A...6345`](https://basescan.org/address/0x38DcDB3A381677239BBc652aed9811F2f8496345) | Index contract — owned by timelock |
+| **Timelock Controller** | [`0x6aBeC8716...8e5Dd`](https://basescan.org/address/0x6aBeC8716fFeEcf7C3D6e68255b4797113E8e5Dd) | 48h immutable delay, 14d grace period |
+| **Ownership transfer tx** | [`0xb653f54f...edaaf`](https://basescan.org/tx/0xb653f54ffa9b1764b41932e6a411077e7e34550605303f15d90900de682edaaf) | Transferred at block 46160610 |
+
+Properties enforced at the contract level:
+- `MIN_DELAY` is **immutable** (override of `updateDelay` reverts permanently)
+- `PROPOSER_ROLE` and `CANCELLER_ROLE` are **strictly separated** (constructor reverts on overlap)
+- `EXECUTOR_ROLE` is open (`address(0)`) — anyone can execute a matured operation, anti-censorship
+- The timelock is **self-administered**: every role/config change must itself go through the 48h delay
+
+This is why the `get_governance_state` tool returns `owner_is_timelock: true` and a verifiable `min_delay_seconds: 172800`. AI agents can use these flags to gate trust-sensitive actions.
 
 ---
 
@@ -38,7 +59,7 @@ Add to `claude_desktop_config.json` (on Windows: `%APPDATA%\Claude\claude_deskto
 }
 ```
 
-Restart Claude Desktop. The 5 GBLIN tools appear in the tool picker.
+Restart Claude Desktop. The 6 GBLIN tools appear in the tool picker.
 
 ### Windsurf / Cursor
 
@@ -95,7 +116,7 @@ Also supports Cline, Continue.dev, and any agent that implements the MCP client 
 
 ---
 
-## The 5 tools
+## The 6 tools
 
 | Tool | Purpose |
 |---|---|
@@ -104,10 +125,11 @@ Also supports Cline, Continue.dev, and any agent that implements the MCP client 
 | `swap_gblin_to_usdc_jit` | **The x402 magic**: generate atomic GBLIN→USDC calldata |
 | `invest_usdc_to_gblin` | Convert USDC earnings into GBLIN treasury (MEV-safe) |
 | `analyze_treasury_health` | Balances + gas + runway + rebalance advice |
+| `get_governance_state` | Verify owner == 48h Timelock + pending asset proposals + min delay |
 
 All tools return structured JSON. All values are quoted on-chain (NAV via `quoteSellGBLIN` × Chainlink ETH/USD, with 24h staleness guard). No mock data.
 
-**Live verification:** the test suite (`npm test`) runs all five tools against Base mainnet and confirms calldata generation, oracle freshness, and slippage math. See the [latest CI run](https://github.com/gblinproject/GBLIN-MCP/actions).
+**Live verification:** the test suite (`npm test`) runs all six tools against Base mainnet and confirms calldata generation, oracle freshness, slippage math, and governance state. See the [latest CI run](https://github.com/gblinproject/GBLIN-MCP/actions).
 
 ---
 

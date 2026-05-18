@@ -49,7 +49,7 @@ async function main(): Promise<void> {
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error(
-    `[${SERVER_NAME}] v${SERVER_VERSION} online — listening on stdio (5 tools registered).`
+    `[${SERVER_NAME}] v${SERVER_VERSION} online — listening on stdio (${TOOL_DEFINITIONS.length} tools registered).`
   );
 }
 

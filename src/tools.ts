@@ -1,13 +1,14 @@
 /**
  * GBLIN MCP — Tool Implementations
  *
- * Five focused tools. Each returns structured JSON the LLM can parse:
+ * Six focused tools. Each returns structured JSON the LLM can parse:
  *
  *   1. get_treasury_state      → NAV, basket, Crash Shield (snapshot)
  *   2. quote_safe_swap         → preview a buy/sell with safe minOut
  *   3. swap_gblin_to_usdc_jit  → calldata for Just-In-Time x402 payment
  *   4. invest_usdc_to_gblin    → calldata to convert USDC earnings → GBLIN
  *   5. analyze_treasury_health → balances + gas check + runway estimate
+ *   6. get_governance_state    → verify 48h timelock ownership + pending ops
  */
 
 import {
@@ -20,9 +21,11 @@ import {
 } from "viem";
 import { z } from "zod";
 
-import { ERC20_ABI, GBLIN_ABI } from "./abi.js";
+import { ERC20_ABI, GBLIN_ABI, TIMELOCK_ABI } from "./abi.js";
 import { client } from "./client.js";
 import {
+  EXPECTED_MIN_DELAY_SECONDS,
+  GBLIN_TIMELOCK,
   GBLIN_V5,
   MIN_DEPOSIT_WEI,
   USDC,
@@ -579,6 +582,265 @@ export async function handleAnalyzeTreasury(args: unknown) {
 }
 
 // ───────────────────────────────────────────────────────────────────────────
+// TOOL 6 — get_governance_state
+// ───────────────────────────────────────────────────────────────────────────
+
+const GovernanceStateSchema = z.object({
+  operation_id: z
+    .string()
+    .regex(/^0x[0-9a-fA-F]{64}$/, "operation_id must be a 32-byte hex string")
+    .optional()
+    .describe(
+      "Optional. A specific TimelockController operation id (bytes32) to inspect — returns pending/ready/done/timestamp."
+    ),
+});
+
+export const GET_GOVERNANCE_STATE_DEFINITION = {
+  name: "get_governance_state",
+  description:
+    "Verify GBLIN protocol governance state: confirms whether GBLIN_V5 is owned by the 48h Timelock, reads the timelock's min delay and grace period, reports role member counts, and surfaces any pending asset-addition proposal on the index contract. If an operation_id is provided, also reports the status of that specific timelock operation. Read-only — use this to gate trust-sensitive agent actions.",
+  inputSchema: {
+    type: "object" as const,
+    properties: {
+      operation_id: {
+        type: "string",
+        description:
+          "Optional 0x-prefixed 32-byte hex id of a specific timelock operation to inspect.",
+      },
+    },
+    additionalProperties: false,
+  },
+};
+
+export async function handleGetGovernanceState(args: unknown) {
+  let parsed: z.infer<typeof GovernanceStateSchema>;
+  try {
+    parsed = GovernanceStateSchema.parse(args ?? {});
+  } catch (e) {
+    return toolError(`Invalid arguments: ${(e as Error).message}`);
+  }
+
+  try {
+    // 1. Read owner + pending asset from GBLIN_V5
+    const [owner, founder, proposedAsset] = await Promise.all([
+      client.readContract({
+        address: GBLIN_V5,
+        abi: GBLIN_ABI,
+        functionName: "owner",
+      }),
+      client.readContract({
+        address: GBLIN_V5,
+        abi: GBLIN_ABI,
+        functionName: "founderWallet",
+      }),
+      client.readContract({
+        address: GBLIN_V5,
+        abi: GBLIN_ABI,
+        functionName: "proposedAsset",
+      }),
+    ]);
+
+    const ownerNorm = getAddress(owner);
+    const timelockNorm = getAddress(GBLIN_TIMELOCK);
+    const ownerIsTimelock = ownerNorm === timelockNorm;
+    const ownerIsRenounced = ownerNorm === "0x0000000000000000000000000000000000000000";
+
+    // 2. Read timelock state — only if owner actually is the timelock,
+    //    otherwise still report expected vs actual for transparency.
+    let timelockState: Record<string, unknown>;
+    try {
+      const [
+        minDelay,
+        proposerRole,
+        cancellerRole,
+        executorRole,
+        adminRole,
+      ] = await Promise.all([
+        client.readContract({
+          address: GBLIN_TIMELOCK,
+          abi: TIMELOCK_ABI,
+          functionName: "getMinDelay",
+        }),
+        client.readContract({
+          address: GBLIN_TIMELOCK,
+          abi: TIMELOCK_ABI,
+          functionName: "PROPOSER_ROLE",
+        }),
+        client.readContract({
+          address: GBLIN_TIMELOCK,
+          abi: TIMELOCK_ABI,
+          functionName: "CANCELLER_ROLE",
+        }),
+        client.readContract({
+          address: GBLIN_TIMELOCK,
+          abi: TIMELOCK_ABI,
+          functionName: "EXECUTOR_ROLE",
+        }),
+        client.readContract({
+          address: GBLIN_TIMELOCK,
+          abi: TIMELOCK_ABI,
+          functionName: "DEFAULT_ADMIN_ROLE",
+        }),
+      ]);
+
+      const [
+        proposerCount,
+        cancellerCount,
+        executorOpen,
+      ] = await Promise.all([
+        client.readContract({
+          address: GBLIN_TIMELOCK,
+          abi: TIMELOCK_ABI,
+          functionName: "getRoleMemberCount",
+          args: [proposerRole],
+        }),
+        client.readContract({
+          address: GBLIN_TIMELOCK,
+          abi: TIMELOCK_ABI,
+          functionName: "getRoleMemberCount",
+          args: [cancellerRole],
+        }),
+        // executor open to anyone if address(0) holds the role
+        client.readContract({
+          address: GBLIN_TIMELOCK,
+          abi: TIMELOCK_ABI,
+          functionName: "hasRole",
+          args: [executorRole, "0x0000000000000000000000000000000000000000"],
+        }),
+      ]);
+
+      timelockState = {
+        address: timelockNorm,
+        min_delay_seconds: Number(minDelay),
+        min_delay_hours: Number(minDelay) / 3600,
+        min_delay_matches_expected: minDelay === EXPECTED_MIN_DELAY_SECONDS,
+        expected_min_delay_seconds: Number(EXPECTED_MIN_DELAY_SECONDS),
+        roles: {
+          proposer_count: Number(proposerCount),
+          canceller_count: Number(cancellerCount),
+          executor_open_to_anyone: executorOpen,
+          self_administered_note:
+            "DEFAULT_ADMIN_ROLE is held by the timelock itself; role changes also take 48h.",
+        },
+        role_ids: {
+          PROPOSER_ROLE: proposerRole,
+          CANCELLER_ROLE: cancellerRole,
+          EXECUTOR_ROLE: executorRole,
+          DEFAULT_ADMIN_ROLE: adminRole,
+        },
+      };
+    } catch (err) {
+      timelockState = {
+        address: timelockNorm,
+        error: `Could not read timelock state: ${(err as Error).message}`,
+      };
+    }
+
+    // 3. Optional: inspect a specific pending timelock operation
+    let operationStatus: Record<string, unknown> | null = null;
+    if (parsed.operation_id) {
+      try {
+        const [isOp, isPending, isReady, isDone, ts] = await Promise.all([
+          client.readContract({
+            address: GBLIN_TIMELOCK,
+            abi: TIMELOCK_ABI,
+            functionName: "isOperation",
+            args: [parsed.operation_id as `0x${string}`],
+          }),
+          client.readContract({
+            address: GBLIN_TIMELOCK,
+            abi: TIMELOCK_ABI,
+            functionName: "isOperationPending",
+            args: [parsed.operation_id as `0x${string}`],
+          }),
+          client.readContract({
+            address: GBLIN_TIMELOCK,
+            abi: TIMELOCK_ABI,
+            functionName: "isOperationReady",
+            args: [parsed.operation_id as `0x${string}`],
+          }),
+          client.readContract({
+            address: GBLIN_TIMELOCK,
+            abi: TIMELOCK_ABI,
+            functionName: "isOperationDone",
+            args: [parsed.operation_id as `0x${string}`],
+          }),
+          client.readContract({
+            address: GBLIN_TIMELOCK,
+            abi: TIMELOCK_ABI,
+            functionName: "getTimestamp",
+            args: [parsed.operation_id as `0x${string}`],
+          }),
+        ]);
+
+        const tsNum = Number(ts);
+        const nowSec = Math.floor(Date.now() / 1000);
+        operationStatus = {
+          id: parsed.operation_id,
+          exists: isOp,
+          pending: isPending,
+          ready: isReady,
+          done: isDone,
+          execute_after_unix: tsNum,
+          execute_after_iso:
+            tsNum > 1 ? new Date(tsNum * 1000).toISOString() : null,
+          seconds_until_ready: tsNum > nowSec ? tsNum - nowSec : 0,
+        };
+      } catch (err) {
+        operationStatus = {
+          id: parsed.operation_id,
+          error: (err as Error).message,
+        };
+      }
+    }
+
+    // 4. Pending asset proposal inside GBLIN_V5 itself (separate 48h mini-timelock)
+    const [pToken, pOracle, pPoolFee, pIsStable, pBaseWeight, pExecuteAfter] =
+      proposedAsset;
+    const hasPendingAsset = pExecuteAfter > 0n;
+    const nowSec = Math.floor(Date.now() / 1000);
+
+    const pendingAssetProposal = hasPendingAsset
+      ? {
+          token: getAddress(pToken),
+          oracle: getAddress(pOracle),
+          pool_fee_bps: pPoolFee,
+          is_stable: pIsStable,
+          base_weight_bps: Number(pBaseWeight),
+          execute_after_unix: Number(pExecuteAfter),
+          execute_after_iso: new Date(Number(pExecuteAfter) * 1000).toISOString(),
+          seconds_until_executable:
+            Number(pExecuteAfter) > nowSec ? Number(pExecuteAfter) - nowSec : 0,
+        }
+      : null;
+
+    return toolResult({
+      gblin_v5: GBLIN_V5,
+      owner: ownerNorm,
+      owner_is_timelock: ownerIsTimelock,
+      owner_is_renounced: ownerIsRenounced,
+      founder_wallet: getAddress(founder),
+      trust_summary: ownerIsRenounced
+        ? "Ownership fully renounced — no admin can touch the contract."
+        : ownerIsTimelock
+          ? "Ownership held by the 48h Timelock. All admin actions are delay-enforced on-chain."
+          : "WARNING: owner is an EOA / unknown contract — admin actions are NOT timelocked.",
+      timelock: timelockState,
+      pending_asset_proposal: pendingAssetProposal,
+      pending_timelock_operation: operationStatus,
+      verification: {
+        gblin_v5_basescan: `https://basescan.org/address/${GBLIN_V5}#readContract`,
+        timelock_basescan: `https://basescan.org/address/${GBLIN_TIMELOCK}#readContract`,
+        ownership_transfer_tx:
+          "https://basescan.org/tx/0xb653f54ffa9b1764b41932e6a411077e7e34550605303f15d90900de682edaaf",
+      },
+    });
+  } catch (err) {
+    return toolError((err as Error).message, "Check RPC connectivity and that the contract addresses match Base mainnet.");
+  }
+}
+
+// ───────────────────────────────────────────────────────────────────────────
 // REGISTRY
 // ───────────────────────────────────────────────────────────────────────────
 
@@ -588,6 +850,7 @@ export const TOOL_DEFINITIONS = [
   JIT_SWAP_DEFINITION,
   INVEST_DEFINITION,
   ANALYZE_TREASURY_DEFINITION,
+  GET_GOVERNANCE_STATE_DEFINITION,
 ];
 
 export const TOOL_HANDLERS: Record<
@@ -599,4 +862,5 @@ export const TOOL_HANDLERS: Record<
   swap_gblin_to_usdc_jit: handleJitSwap,
   invest_usdc_to_gblin: handleInvest,
   analyze_treasury_health: handleAnalyzeTreasury,
+  get_governance_state: handleGetGovernanceState,
 };

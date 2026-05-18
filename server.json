@@ -1,0 +1,31 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
+  "name": "io.github.gblinproject/gblin-mcp-server",
+  "description": "Treasury standard for AI agents on Base mainnet. Lets autonomous agents hold capital in GBLIN — a diversified, Crash-Shield-protected on-chain index — and Just-In-Time swap to USDC the millisecond they need to pay an x402 invoice. GBLIN_V5 is owned by a 48h Timelock Controller for verifiable trust.",
+  "status": "active",
+  "repository": {
+    "url": "https://github.com/gblinproject/GBLIN-MCP",
+    "source": "github"
+  },
+  "version": "0.1.1",
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "@gblin-protocol/mcp-server",
+      "version": "0.1.1",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "GBLIN_RPC_URL",
+          "description": "Optional. Base mainnet RPC URL (Alchemy, QuickNode, etc). Defaults to https://base-rpc.publicnode.com.",
+          "isRequired": false,
+          "isSecret": false,
+          "default": "https://base-rpc.publicnode.com"
+        }
+      ]
+    }
+  ]
+}

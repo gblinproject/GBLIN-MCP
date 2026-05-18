@@ -32,11 +32,39 @@ export const GBLIN_ABI = parseAbi([
   // State helpers
   "function lastDepositTime(address user) view returns (uint256)",
 
+  // Governance / ownership (public state vars)
+  "function owner() view returns (address)",
+  "function founderWallet() view returns (address)",
+  "function proposedAsset() view returns (address token, address oracle, uint24 poolFee, bool isStable, uint256 baseWeight, uint256 executeAfter)",
+
   // Mutating — only used to build calldata (never executed by the MCP server)
   "function buyGBLIN(uint256 minGblinOut) payable",
   "function sellGBLINForEth(uint256 gblinAmount, uint256 minEthOut)",
   "function sellGBLINForToken(uint256 gblinAmount, address targetToken, uint24 wethToTargetFee, uint256 minTokenOut)",
   "function buyGBLINWithToken(bytes path, uint256 amountIn, uint256 minWethOut, uint256 minGblinOut)",
+]);
+
+/**
+ * GblinTimelockController — OpenZeppelin TimelockController v5 surface.
+ * Only the views we need to read governance state.
+ */
+export const TIMELOCK_ABI = parseAbi([
+  "function getMinDelay() view returns (uint256)",
+  "function GRACE_PERIOD() view returns (uint256)",
+  "function PROPOSER_ROLE() view returns (bytes32)",
+  "function CANCELLER_ROLE() view returns (bytes32)",
+  "function EXECUTOR_ROLE() view returns (bytes32)",
+  "function DEFAULT_ADMIN_ROLE() view returns (bytes32)",
+  "function hasRole(bytes32 role, address account) view returns (bool)",
+  "function getRoleMemberCount(bytes32 role) view returns (uint256)",
+  "function isOperation(bytes32 id) view returns (bool)",
+  "function isOperationPending(bytes32 id) view returns (bool)",
+  "function isOperationReady(bytes32 id) view returns (bool)",
+  "function isOperationDone(bytes32 id) view returns (bool)",
+  "function getTimestamp(bytes32 id) view returns (uint256)",
+  "event CallScheduled(bytes32 indexed id, uint256 indexed index, address target, uint256 value, bytes data, bytes32 predecessor, uint256 delay)",
+  "event Cancelled(bytes32 indexed id)",
+  "event CallExecuted(bytes32 indexed id, uint256 indexed index, address target, uint256 value, bytes data)",
 ]);
 
 /**
