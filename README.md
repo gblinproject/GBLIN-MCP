@@ -23,7 +23,7 @@ npm install plugin-gblin
 
 It exposes three native Actions (`CHECK_GBLIN_TREASURY_HEALTH`, `INVEST_IDLE_USDC_GBLIN`, `RESCUE_USDC_FROM_GBLIN`) and a Provider that injects live NAV + Crash Shield status into the agent context on every loop.
 
-→ [Full Eliza plugin docs](./plugin-eliza/README.md)
+→ [Full Eliza plugin docs](https://github.com/gblinproject/GBLIN_PLUGIN)
 
 ---
 
