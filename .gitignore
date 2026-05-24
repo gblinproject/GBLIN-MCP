@@ -42,3 +42,8 @@ mcp-publisher.exe
 mcp-publisher
 mcp-publisher_*/
 .mcppublisher/
+
+# ElizaOS plugin build artifacts (built locally)
+plugin-eliza/dist/
+plugin-eliza/node_modules/
+plugin-eliza/*.tsbuildinfo

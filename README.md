@@ -12,6 +12,21 @@
 
 ---
 
+## ElizaOS Plugin
+
+For agents running on **ElizaOS**, install the companion plugin:
+
+```bash
+npm install plugin-gblin
+# or: elizaos plugins add gblin
+```
+
+It exposes three native Actions (`CHECK_GBLIN_TREASURY_HEALTH`, `INVEST_IDLE_USDC_GBLIN`, `RESCUE_USDC_FROM_GBLIN`) and a Provider that injects live NAV + Crash Shield status into the agent context on every loop.
+
+→ [Full Eliza plugin docs](./plugin-eliza/README.md)
+
+---
+
 ## Trust & Governance
 
 **GBLIN_V5 is owned by a 48h Timelock Controller** — every admin operation (parameter change, oracle update, ownership transfer) is enforced on-chain to wait **172,800 seconds** before execution. Agents and integrators can verify this directly on BaseScan.
