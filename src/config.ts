@@ -12,7 +12,24 @@ export const BASE_CHAIN_ID = 8453;
 // publicnode.com is a free, no-key, generously-rated Base mainnet RPC
 // (verified May 2026). Users can override via GBLIN_RPC_URL for Alchemy/QuickNode.
 export const DEFAULT_RPC_URL = "https://base-rpc.publicnode.com";
-export const RPC_URL = process.env.GBLIN_RPC_URL ?? DEFAULT_RPC_URL;
+
+function isValidHttpUrl(s: string): boolean {
+  try {
+    const u = new URL(s);
+    return u.protocol === "http:" || u.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+const _rawRpc = process.env.GBLIN_RPC_URL;
+if (_rawRpc && !isValidHttpUrl(_rawRpc)) {
+  console.error(
+    `[gblin-mcp] GBLIN_RPC_URL="${_rawRpc}" is not a valid HTTP URL — falling back to ${DEFAULT_RPC_URL}`
+  );
+}
+export const RPC_URL =
+  _rawRpc && isValidHttpUrl(_rawRpc) ? _rawRpc : DEFAULT_RPC_URL;
 
 // ─── Core Contracts (Base Mainnet, verified) ────────────────────────────────
 export const GBLIN_V5: Address = "0x38DcDB3A381677239BBc652aed9811F2f8496345";
