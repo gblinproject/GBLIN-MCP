@@ -17,3 +17,8 @@ Copy to your ElizaOS project and install plugin-gblin:
 ```bash
 bun add plugin-gblin
 ```
+
+## agentkit-example.ts
+
+Coinbase AgentKit integration showing GBLIN treasury management
+with real x402 payment flow.
