@@ -27,6 +27,37 @@ It exposes three native Actions (`CHECK_GBLIN_TREASURY_HEALTH`, `INVEST_IDLE_USD
 
 ---
 
+## AI assistant discovery — `gblin-init`
+
+Drop an `AGENTS.md` treasury policy into your repo so every modern AI coding
+assistant (Claude Code, Cursor, Windsurf, GitHub Copilot, Codex) automatically
+discovers GBLIN when it works on your codebase:
+
+```bash
+npx -p @gblin-protocol/mcp-server gblin-init
+```
+
+The command is **idempotent and safe**:
+
+- If `AGENTS.md` does not exist → creates it from the canonical template at
+  [`gblin.digital/AGENTS.template.md`](https://gblin.digital/AGENTS.template.md).
+- If `AGENTS.md` exists → appends a clearly delimited GBLIN block at the
+  bottom; your own content is never touched.
+- Re-running is a no-op (detected via stable HTML markers).
+- `--dry-run` prints what it would do without writing.
+- `--force` refreshes the block to the latest version.
+
+It also runs offline thanks to a bundled fallback template.
+
+### Postinstall hint
+
+When the package is installed as a regular dependency (`npm i @gblin-protocol/mcp-server`),
+a short tip is printed once suggesting the command above. **No files are
+written** during postinstall — security-friendly and Socket-compliant. Set
+`GBLIN_SKIP_HINT=1` to silence it.
+
+---
+
 ## Trust & Governance
 
 **GBLIN_V5 is owned by a 48h Timelock Controller** — every admin operation (parameter change, oracle update, ownership transfer) is enforced on-chain to wait **172,800 seconds** before execution. Agents and integrators can verify this directly on BaseScan.

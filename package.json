@@ -7,10 +7,13 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
-    "gblin-mcp": "dist/index.js"
+    "gblin-mcp": "dist/index.js",
+    "gblin-init": "dist/init.js"
   },
   "files": [
     "dist",
+    "scripts/postinstall.cjs",
+    "AGENTS.md",
     "README.md",
     "LICENSE",
     "llms.txt"
@@ -19,7 +22,9 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
+    "init": "tsx src/init.ts",
     "test": "tsx scripts/test.ts",
+    "postinstall": "node scripts/postinstall.cjs || true",
     "prepublishOnly": "npm run build"
   },
   "keywords": [
