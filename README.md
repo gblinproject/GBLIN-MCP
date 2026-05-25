@@ -245,7 +245,7 @@ src/
   abi.ts       # GBLIN_V5 + Chainlink + ERC-20 ABIs
   client.ts    # viem PublicClient + on-chain timestamp helper
   helpers.ts   # NAV, basket state, slippage, cooldown, reverse quote
-  tools.ts     # the 5 tool implementations + zod schemas
+  tools.ts     # the 6 tool implementations + zod schemas
   index.ts     # MCP stdio server entry
 scripts/
   test.ts      # live smoke test

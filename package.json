@@ -24,6 +24,7 @@
     "dev": "tsx src/index.ts",
     "init": "tsx src/init.ts",
     "test": "tsx scripts/test.ts",
+    "demo": "tsx examples/demo-agent.ts",
     "postinstall": "node scripts/postinstall.cjs || true",
     "prepublishOnly": "npm run build"
   },
