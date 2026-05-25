@@ -39,6 +39,8 @@ export const WETH: Address = "0x4200000000000000000000000000000000000006";
 // GblinTimelockController — owns GBLIN_V5 since block 46160610 (May 2026).
 // 48h immutable delay, 14d grace period, open executor.
 export const GBLIN_TIMELOCK: Address = "0x6aBeC8716fFeEcf7C3D6e68255b4797113E8e5Dd";
+// Guardian multisig — holds CANCELLER_ROLE (veto power), separate from PROPOSER_ROLE.
+export const GBLIN_GUARDIAN: Address = "0x30590c0D05c26562d7296CE3D927d3418d2e6dcA";
 export const EXPECTED_MIN_DELAY_SECONDS = 172_800n; // 48 hours
 
 // Chainlink ETH/USD price feed on Base

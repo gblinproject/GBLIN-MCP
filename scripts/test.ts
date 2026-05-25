@@ -10,6 +10,7 @@
 
 import {
   handleAnalyzeTreasury,
+  handleGetGovernanceState,
   handleGetTreasuryState,
   handleInvest,
   handleJitSwap,
@@ -57,6 +58,10 @@ const cases: TestCase[] = [
         wallet_address: TEST_WALLET,
         daily_burn_usd: 1.0,
       }),
+  },
+  {
+    name: "get_governance_state",
+    run: () => handleGetGovernanceState({}),
   },
 ];
 

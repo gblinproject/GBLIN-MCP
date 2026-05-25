@@ -25,6 +25,7 @@ import { ERC20_ABI, GBLIN_ABI, TIMELOCK_ABI } from "./abi.js";
 import { client } from "./client.js";
 import {
   EXPECTED_MIN_DELAY_SECONDS,
+  GBLIN_GUARDIAN,
   GBLIN_TIMELOCK,
   GBLIN_V5,
   MIN_DEPOSIT_WEI,
@@ -683,29 +684,47 @@ export async function handleGetGovernanceState(args: unknown) {
         }),
       ]);
 
+      // OZ TimelockController v5 uses AccessControl (not AccessControlEnumerable),
+      // so getRoleMemberCount is unavailable. Use hasRole on known addresses instead.
+      const ZERO = "0x0000000000000000000000000000000000000000" as const;
+      const founderAddr = await client.readContract({
+        address: GBLIN_V5,
+        abi: GBLIN_ABI,
+        functionName: "founderWallet",
+      });
+
       const [
-        proposerCount,
-        cancellerCount,
+        founderIsProposer,
+        guardianIsCanceller,
+        timelockIsSelfAdmin,
         executorOpen,
       ] = await Promise.all([
         client.readContract({
           address: GBLIN_TIMELOCK,
           abi: TIMELOCK_ABI,
-          functionName: "getRoleMemberCount",
-          args: [proposerRole],
+          functionName: "hasRole",
+          args: [proposerRole, founderAddr],
         }),
-        client.readContract({
-          address: GBLIN_TIMELOCK,
-          abi: TIMELOCK_ABI,
-          functionName: "getRoleMemberCount",
-          args: [cancellerRole],
-        }),
-        // executor open to anyone if address(0) holds the role
+        // Guardian multisig should hold CANCELLER_ROLE (veto power)
         client.readContract({
           address: GBLIN_TIMELOCK,
           abi: TIMELOCK_ABI,
           functionName: "hasRole",
-          args: [executorRole, "0x0000000000000000000000000000000000000000"],
+          args: [cancellerRole, GBLIN_GUARDIAN],
+        }),
+        // Timelock should be its own admin (self-governed)
+        client.readContract({
+          address: GBLIN_TIMELOCK,
+          abi: TIMELOCK_ABI,
+          functionName: "hasRole",
+          args: [adminRole, GBLIN_TIMELOCK],
+        }),
+        // Executor open to anyone if address(0) holds the role
+        client.readContract({
+          address: GBLIN_TIMELOCK,
+          abi: TIMELOCK_ABI,
+          functionName: "hasRole",
+          args: [executorRole, ZERO],
         }),
       ]);
 
@@ -716,8 +735,9 @@ export async function handleGetGovernanceState(args: unknown) {
         min_delay_matches_expected: minDelay === EXPECTED_MIN_DELAY_SECONDS,
         expected_min_delay_seconds: Number(EXPECTED_MIN_DELAY_SECONDS),
         roles: {
-          proposer_count: Number(proposerCount),
-          canceller_count: Number(cancellerCount),
+          founder_is_proposer: founderIsProposer,
+          guardian_is_canceller: guardianIsCanceller,
+          timelock_is_self_admin: timelockIsSelfAdmin,
           executor_open_to_anyone: executorOpen,
           self_administered_note:
             "DEFAULT_ADMIN_ROLE is held by the timelock itself; role changes also take 48h.",
