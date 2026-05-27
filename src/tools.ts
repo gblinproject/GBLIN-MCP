@@ -34,16 +34,6 @@ import {
   WETH,
   WETH_USDC_POOL_FEE,
 } from "./config.js";
-
-// ───────────────────────────────────────────────────────────────────────────
-// SwapRouter02 (Uniswap V3 on Base) — used for USDC→WETH exactInputSingle
-// ───────────────────────────────────────────────────────────────────────────
-
-const SWAP_ROUTER_02 = "0x2626664c2603336E57B271c5C0b26F421741e481" as const;
-
-const SWAP_ROUTER_ABI = parseAbi([
-  "function exactInputSingle((address tokenIn, address tokenOut, uint24 fee, address recipient, uint256 amountIn, uint256 amountOutMinimum, uint160 sqrtPriceLimitX96)) external payable returns (uint256 amountOut)",
-]);
 import {
   applySlippageBuffer,
   checkCooldown,
@@ -54,6 +44,16 @@ import {
   getWalletBalances,
   quoteGblinForUsdc,
 } from "./helpers.js";
+
+// ───────────────────────────────────────────────────────────────────────────
+// SwapRouter02 (Uniswap V3 on Base) — used for USDC→WETH exactInputSingle
+// ───────────────────────────────────────────────────────────────────────────
+
+const SWAP_ROUTER_02 = "0x2626664c2603336E57B271c5C0b26F421741e481" as const;
+
+const SWAP_ROUTER_ABI = parseAbi([
+  "function exactInputSingle((address tokenIn, address tokenOut, uint24 fee, address recipient, uint256 amountIn, uint256 amountOutMinimum, uint160 sqrtPriceLimitX96)) external payable returns (uint256 amountOut)",
+]);
 
 // ───────────────────────────────────────────────────────────────────────────
 // ERC-8021 Builder Code attribution (Base Builder Rewards)
