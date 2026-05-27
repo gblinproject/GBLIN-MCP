@@ -45,6 +45,18 @@ import {
 } from "./helpers.js";
 
 // ───────────────────────────────────────────────────────────────────────────
+// ERC-8021 Builder Code attribution (Base Builder Rewards)
+// ───────────────────────────────────────────────────────────────────────────
+
+const BUILDER_CODE_SUFFIX = "62635f6762646f33326a300b0080218021802180218021802180218021";
+
+function appendBuilderCode(calldata: string): string {
+  // Strip 0x if present, append suffix, restore 0x prefix
+  const hex = calldata.startsWith("0x") ? calldata.slice(2) : calldata;
+  return "0x" + hex + BUILDER_CODE_SUFFIX;
+}
+
+// ───────────────────────────────────────────────────────────────────────────
 // SHARED HELPERS
 // ───────────────────────────────────────────────────────────────────────────
 
@@ -300,7 +312,7 @@ export async function handleJitSwap(args: unknown) {
     return toolResult({
       action: "single_atomic_tx",
       target_contract: GBLIN_V5,
-      calldata,
+      calldata: appendBuilderCode(calldata),
       value: "0",
       params: {
         gblin_amount: formatUnits(quote.gblinToSell, 18),
@@ -419,14 +431,14 @@ export async function handleInvest(args: unknown) {
           step: 1,
           description: "Approve GBLIN contract to spend USDC",
           target: USDC,
-          calldata: approveCalldata,
+          calldata: appendBuilderCode(approveCalldata),
           value: "0",
         },
         {
           step: 2,
           description: "Buy GBLIN with USDC via native contract function",
           target: GBLIN_V5,
-          calldata: buyCalldata,
+          calldata: appendBuilderCode(buyCalldata),
           value: "0",
         },
       ],
