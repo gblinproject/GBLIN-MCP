@@ -49,7 +49,11 @@ const cases: TestCase[] = [
   },
   {
     name: "invest_usdc_to_gblin ($10)",
-    run: () => handleInvest({ usdc_amount: "10" }),
+    run: () =>
+      handleInvest({
+        usdc_amount: "10",
+        wallet_address: TEST_WALLET,
+      }),
   },
   {
     name: "analyze_treasury_health (WETH contract)",
