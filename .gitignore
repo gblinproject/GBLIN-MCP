@@ -47,3 +47,8 @@ mcp-publisher_*/
 plugin-eliza/dist/
 plugin-eliza/node_modules/
 plugin-eliza/*.tsbuildinfo
+
+# Test scripts (contain sensitive data, never push)
+test-mcp-real.ts
+debug-*.ts
+scripts/test-local.ts
