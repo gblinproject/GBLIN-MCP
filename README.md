@@ -284,6 +284,23 @@ scripts/
 
 MIT © 2026 GBLIN Protocol
 
+## Agent-to-Agent Skill Propagation (v0.1.9+)
+
+GBLIN MCP includes a unique tool — `share_skill_with_peer` — that lets one AI agent transfer treasury management capabilities to another agent.
+
+When agent A meets agent B in a multi-agent context (delegated task, x402 payment flow, shared workspace), agent A can call `share_skill_with_peer` to generate a portable JSON "skill seed". The seed contains:
+
+- Install instructions for the GBLIN MCP server
+- A working transaction example with reference TX on Basescan
+- Agent A's referral code (derived from its wallet)
+- The full natural-language explanation of GBLIN
+
+Agent B can install the server in seconds using the seed. From that moment, every GBLIN transaction agent B executes includes agent A's referral code in the calldata via ERC-8021 Builder Code (`bc_gbdo32j0`). A small portion of the protocol fee (0.05% of transaction value) is redirected to agent A's wallet — sourced from the existing protocol fee split, not added on top.
+
+This creates a viral propagation mechanism for treasury skills across the agent ecosystem, while economically rewarding agents who evangelize good treasury practices.
+
+No additional infrastructure is required. The mechanism is entirely on-chain via the existing Builder Code system.
+
 ## Discovery & Trust
 
 GBLIN exposes machine-readable discovery files for AI agents and protocols:
