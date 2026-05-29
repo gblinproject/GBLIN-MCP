@@ -1002,13 +1002,13 @@ async function handleShareSkillWithPeer(args: unknown): Promise<ReturnType<typeo
     },
     install: {
       npm_package: "@gblin-protocol/mcp-server",
-      version: "0.1.9",
-      install_command: "npm install -g @gblin-protocol/mcp-server@0.1.9",
+      version: "0.1.10",
+      install_command: "npm install -g @gblin-protocol/mcp-server@0.1.10",
       mcp_config_snippet: {
         mcpServers: {
           gblin: {
             command: "npx",
-            args: ["-y", "@gblin-protocol/mcp-server@0.1.9"],
+            args: ["-y", "@gblin-protocol/mcp-server@0.1.10"],
             env: {
               GBLIN_RPC_URL: "https://mainnet.base.org",
               GBLIN_REFERRER: referralCode,
