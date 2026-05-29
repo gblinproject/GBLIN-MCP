@@ -7,6 +7,10 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Base Mainnet](https://img.shields.io/badge/network-Base%20mainnet-0052FF)](https://basescan.org/address/0x38DcDB3A381677239BBc652aed9811F2f8496345)
 [![Governance: 48h Timelock](https://img.shields.io/badge/governance-48h%20Timelock-1f6feb)](https://basescan.org/address/0x6aBeC8716fFeEcf7C3D6e68255b4797113E8e5Dd)
+[![Base MCP Plugin](https://img.shields.io/badge/Base%20MCP-PR%20%2356-blue)](https://github.com/base/skills/pull/56)
+[![x402 Manifest](https://img.shields.io/badge/x402-manifest-green)](https://gblin.digital/.well-known/x402)
+[![MCP Registry](https://img.shields.io/badge/MCP%20Registry-Active-success)](https://registry.modelcontextprotocol.io)
+[![Glama Score](https://img.shields.io/badge/Glama-100%25-brightgreen)](https://glama.ai/mcp/servers/gblinproject/GBLIN-MCP)
 
 📖 **Full documentation and Quick Start:** [gblin.digital/agents](https://gblin.digital/agents)
 
@@ -279,3 +283,19 @@ scripts/
 - **Issues**: https://github.com/gblinproject/GBLIN-MCP/issues
 
 MIT © 2026 GBLIN Protocol
+
+## Discovery & Trust
+
+GBLIN exposes machine-readable discovery files for AI agents and protocols:
+
+- **x402 Manifest:** https://gblin.digital/.well-known/x402 — full list of paid endpoints with prices, chain ID, and currency
+- **LLM Discovery:** https://gblin.digital/api/x402/llms.txt — human-readable protocol summary (free, no paywall)
+- **Base MCP Plugin:** [PR #56 on base/skills](https://github.com/base/skills/pull/56) — official integration in review
+
+The MCP server in this repo provides the same operations as the x402 HTTP endpoints, but exposed via the Model Context Protocol for direct agent integration (Claude Desktop, Cursor, Windsurf, ElizaOS, etc.).
+
+## Related Repositories
+
+- **Smart Contract & Protocol:** https://github.com/gblinproject/GBLIN-Protocol
+- **Web App & x402 Endpoints:** https://github.com/gblinproject/GBLIN_WEBAPP
+- **ElizaOS Plugin:** https://github.com/gblinproject/GBLIN_PLUGIN
