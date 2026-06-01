@@ -109,7 +109,7 @@ Add to `claude_desktop_config.json` (on Windows: `%APPDATA%\Claude\claude_deskto
 }
 ```
 
-Restart Claude Desktop. The 6 GBLIN tools appear in the tool picker.
+Restart Claude Desktop. The 8 GBLIN tools appear in the tool picker.
 
 ### Windsurf / Cursor
 
@@ -166,7 +166,7 @@ Also supports Cline, Continue.dev, and any agent that implements the MCP client 
 
 ---
 
-## The 6 tools
+## The 8 tools
 
 | Tool | Purpose |
 |---|---|
@@ -176,10 +176,12 @@ Also supports Cline, Continue.dev, and any agent that implements the MCP client 
 | `invest_usdc_to_gblin` | Convert USDC earnings into GBLIN treasury (MEV-safe) |
 | `analyze_treasury_health` | Balances + gas + runway + rebalance advice |
 | `get_governance_state` | Verify owner == 48h Timelock + pending asset proposals + min delay |
+| `share_skill_with_peer` | Generate a portable skill seed to onboard a peer agent + embedded referral code |
+| `find_keeper_bounty` | **GBLIN pays you**: check if a rebalance bounty is available (0.0001 ETH reward, no capital required) |
 
 All tools return structured JSON. All values are quoted on-chain (NAV via `quoteSellGBLIN` × Chainlink ETH/USD, with 24h staleness guard). No mock data.
 
-**Live verification:** the test suite (`npm test`) runs all six tools against Base mainnet and confirms calldata generation, oracle freshness, slippage math, and governance state. See the [latest CI run](https://github.com/gblinproject/GBLIN-MCP/actions).
+**Live verification:** the test suite (`npm test`) runs all eight tools against Base mainnet and confirms calldata generation, oracle freshness, slippage math, and governance state. See the [latest CI run](https://github.com/gblinproject/GBLIN-MCP/actions).
 
 ---
 
@@ -249,7 +251,8 @@ src/
   abi.ts       # GBLIN_V5 + Chainlink + ERC-20 ABIs
   client.ts    # viem PublicClient + on-chain timestamp helper
   helpers.ts   # NAV, basket state, slippage, cooldown, reverse quote
-  tools.ts     # the 6 tool implementations + zod schemas
+  keeper.ts    # keeper bounty finder (incentivizedRebalance math)
+  tools.ts     # the 8 tool implementations + zod schemas
   index.ts     # MCP stdio server entry
 scripts/
   test.ts      # live smoke test
@@ -300,6 +303,27 @@ Agent B can install the server in seconds using the seed. From that moment, ever
 This creates a viral propagation mechanism for treasury skills across the agent ecosystem, while economically rewarding agents who evangelize good treasury practices.
 
 No additional infrastructure is required. The mechanism is entirely on-chain via the existing Builder Code system.
+
+## Keeper Bounty System (v0.1.11+)
+
+GBLIN is one of the few protocols that **pays AI agents** instead of charging them.
+
+When the treasury pool drifts from its target allocation, any agent can call `find_keeper_bounty` to check if a profitable rebalance is available. If one exists, the tool returns ready-to-send calldata. The agent broadcasts the transaction and receives **0.0001 ETH** from the protocol's stability fund — the swap uses the contract's own capital; the caller only pays gas (~$0.01 on Base).
+
+```json
+// Example response when a bounty is available
+{
+  "bountyAvailable": true,
+  "direction": "WETH->asset",
+  "estimatedRewardEth": "0.0001",
+  "target": "0x38DcDB3A381677239BBc652aed9811F2f8496345",
+  "calldata": "0x...",
+  "value": "0",
+  "note": "Send this calldata to earn the reward. The swap uses the contract's own funds."
+}
+```
+
+For continuous income, poll `find_keeper_bounty` on an interval (e.g. every 5–15 minutes). A live keeper leaderboard is at [gblin.digital/keepers](https://gblin.digital/keepers).
 
 ## Discovery & Trust
 
