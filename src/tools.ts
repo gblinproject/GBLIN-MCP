@@ -44,6 +44,7 @@ import {
   getWalletBalances,
   quoteGblinForUsdc,
 } from "./helpers.js";
+import { findKeeperBounty } from "./keeper.js";
 
 // ───────────────────────────────────────────────────────────────────────────
 // SwapRouter02 (Uniswap V3 on Base) — used for USDC→WETH exactInputSingle
@@ -1094,6 +1095,31 @@ async function handleShareSkillWithPeer(args: unknown): Promise<ReturnType<typeo
 }
 
 // ───────────────────────────────────────────────────────────────────────────
+// TOOL 8: find_keeper_bounty
+// ───────────────────────────────────────────────────────────────────────────
+
+const FIND_KEEPER_BOUNTY_DEFINITION = {
+  name: "find_keeper_bounty",
+  description:
+    "Check if there is a profitable rebalance opportunity on GBLIN right now. GBLIN PAYS the caller 0.0001 ETH to rebalance its treasury pool when it drifts. The swap uses the contract's own funds; the caller only pays gas. Returns ready-to-send calldata and the expected reward. Use this when an AI agent wants to earn passive ETH income as a keeper on Base.",
+  inputSchema: {
+    type: "object" as const,
+    properties: {},
+    required: [],
+    additionalProperties: false,
+  },
+};
+
+async function handleFindKeeperBounty(): Promise<ReturnType<typeof toolResult> | ReturnType<typeof toolError>> {
+  try {
+    const bounty = await findKeeperBounty(process.env.GBLIN_RPC_URL);
+    return toolResult(bounty);
+  } catch (err) {
+    return toolError((err as Error).message, "Check RPC connectivity.");
+  }
+}
+
+// ───────────────────────────────────────────────────────────────────────────
 // REGISTRY
 // ───────────────────────────────────────────────────────────────────────────
 
@@ -1105,6 +1131,7 @@ export const TOOL_DEFINITIONS = [
   ANALYZE_TREASURY_DEFINITION,
   GET_GOVERNANCE_STATE_DEFINITION,
   SHARE_SKILL_DEFINITION,
+  FIND_KEEPER_BOUNTY_DEFINITION,
 ];
 
 export const TOOL_HANDLERS: Record<
@@ -1118,4 +1145,5 @@ export const TOOL_HANDLERS: Record<
   analyze_treasury_health: handleAnalyzeTreasury,
   get_governance_state: handleGetGovernanceState,
   share_skill_with_peer: handleShareSkillWithPeer,
+  find_keeper_bounty: handleFindKeeperBounty,
 };
