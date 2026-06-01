@@ -1,0 +1,22 @@
+{
+  "name": "telegram-tipbot-treasury",
+  "version": "0.1.0",
+  "description": "Telegram bot that accepts USDC tips on Base and auto-invests revenue into GBLIN treasury",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js",
+    "build": "tsc"
+  },
+  "dependencies": {
+    "telegraf": "^4.16.0",
+    "viem": "^2.21.0",
+    "dotenv": "^16.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.4.0",
+    "tsx": "^4.7.0"
+  }
+}
