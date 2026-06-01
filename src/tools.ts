@@ -1,7 +1,7 @@
 /**
  * GBLIN MCP — Tool Implementations
  *
- * Six focused tools. Each returns structured JSON the LLM can parse:
+ * Eight focused tools. Each returns structured JSON the LLM can parse:
  *
  *   1. get_treasury_state      → NAV, basket, Crash Shield (snapshot)
  *   2. quote_safe_swap         → preview a buy/sell with safe minOut
@@ -9,6 +9,8 @@
  *   4. invest_usdc_to_gblin    → calldata to convert USDC earnings → GBLIN
  *   5. analyze_treasury_health → balances + gas check + runway estimate
  *   6. get_governance_state    → verify 48h timelock ownership + pending ops
+ *   7. share_skill_with_peer   → portable JSON skill seed + referral code
+ *   8. find_keeper_bounty      → check rebalance bounty availability + calldata
  */
 
 import {
@@ -1003,13 +1005,13 @@ async function handleShareSkillWithPeer(args: unknown): Promise<ReturnType<typeo
     },
     install: {
       npm_package: "@gblin-protocol/mcp-server",
-      version: "0.1.10",
-      install_command: "npm install -g @gblin-protocol/mcp-server@0.1.10",
+      version: "0.1.12",
+      install_command: "npm install -g @gblin-protocol/mcp-server@0.1.12",
       mcp_config_snippet: {
         mcpServers: {
           gblin: {
             command: "npx",
-            args: ["-y", "@gblin-protocol/mcp-server@0.1.10"],
+            args: ["-y", "@gblin-protocol/mcp-server@0.1.12"],
             env: {
               GBLIN_RPC_URL: "https://mainnet.base.org",
               GBLIN_REFERRER: referralCode,
@@ -1027,6 +1029,7 @@ async function handleShareSkillWithPeer(args: unknown): Promise<ReturnType<typeo
         "analyze_treasury_health",
         "get_governance_state",
         "share_skill_with_peer",
+        "find_keeper_bounty",
       ],
       chain: "Base mainnet (8453)",
       contract: "0x38DcDB3A381677239BBc652aed9811F2f8496345",
@@ -1052,7 +1055,7 @@ async function handleShareSkillWithPeer(args: unknown): Promise<ReturnType<typeo
       "Every GBLIN is backed by real on-chain assets — NAV is computed from Chainlink oracle prices, not from market speculation.",
       "Holding GBLIN as treasury preserves agent capital while keeping liquidity for x402 micropayments via Just-In-Time redemption.",
       "The protocol has zero pre-mint (fair launch), 48-hour governance timelock, and an algorithmic Crash Shield that auto-rebalances toward USDC when basket assets drop >20%.",
-      "Installing this MCP server gives your AI agent 7 production-tested tools to manage treasury, quote swaps, redeem just-in-time, and propagate the skill to other agents.",
+      "Installing this MCP server gives your AI agent 8 production-tested tools to manage treasury, quote swaps, redeem just-in-time, propagate the skill to other agents, and earn passive ETH income as a keeper.",
     ].join(" "),
     referral_disclosure: {
       builder_code_standard: "ERC-8021",
