@@ -335,8 +335,26 @@ GBLIN exposes machine-readable discovery files for AI agents and protocols:
 
 The MCP server in this repo provides the same operations as the x402 HTTP endpoints, but exposed via the Model Context Protocol for direct agent integration (Claude Desktop, Cursor, Windsurf, ElizaOS, etc.).
 
+## GBLIN Sentinel — x402 Data Agent Example
+
+[GBLIN Sentinel](https://gblin-sentinel.vercel.app) is an open-source reference implementation of an autonomous AI agent that **sells** on-chain data via x402 micropayments. It demonstrates the full x402 producer pattern on Base.
+
+| Endpoint | Price | Data |
+|---|---|---|
+| `/api/data/base-risk-pulse` | $0.002 USDC | Chainlink risk signal: `normal`/`caution`/`risk-off` for ETH, BTC, USDC |
+| `/api/data/gblin-analytics` | $0.001 USDC | GBLIN treasury state, basket weights, keeper availability |
+| `/api/data/keeper-opps` | $0.001 USDC | Live keeper bounty check with MCP tool reference |
+
+Discovery:
+- x402 manifest: https://gblin-sentinel.vercel.app/.well-known/x402
+- LLM reference: https://gblin-sentinel.vercel.app/llms.txt
+- Source: https://github.com/gblinproject/gblin-sentinel
+
+Any agent using this MCP server can call `base-risk-pulse` before investing to gate treasury actions on current market risk signal.
+
 ## Related Repositories
 
 - **Smart Contract & Protocol:** https://github.com/gblinproject/GBLIN-Protocol
 - **Web App & x402 Endpoints:** https://github.com/gblinproject/GBLIN_WEBAPP
 - **ElizaOS Plugin:** https://github.com/gblinproject/GBLIN_PLUGIN
+- **GBLIN Sentinel (x402 data agent):** https://github.com/gblinproject/gblin-sentinel
