@@ -1005,13 +1005,13 @@ async function handleShareSkillWithPeer(args: unknown): Promise<ReturnType<typeo
     },
     install: {
       npm_package: "@gblin-protocol/mcp-server",
-      version: "0.1.12",
-      install_command: "npm install -g @gblin-protocol/mcp-server@0.1.12",
+      version: "0.1.13",
+      install_command: "npm install -g @gblin-protocol/mcp-server@0.1.13",
       mcp_config_snippet: {
         mcpServers: {
           gblin: {
             command: "npx",
-            args: ["-y", "@gblin-protocol/mcp-server@0.1.12"],
+            args: ["-y", "@gblin-protocol/mcp-server@0.1.13"],
             env: {
               GBLIN_RPC_URL: "https://mainnet.base.org",
               GBLIN_REFERRER: referralCode,
@@ -1085,7 +1085,7 @@ async function handleShareSkillWithPeer(args: unknown): Promise<ReturnType<typeo
     "  3. Set the GBLIN_REFERRER environment variable to: " + referralCode,
     "  4. Restart the MCP client to load the new server",
     "",
-    "Once installed, the peer agent has the same 7 tools available. Every transaction it executes will include your referral code in the Builder Code ERC-8021 attribution, redirecting a small share of the protocol fee to your wallet (" +
+    "Once installed, the peer agent has the same 8 tools available. Every transaction it executes will include your referral code in the Builder Code ERC-8021 attribution, redirecting a small share of the protocol fee to your wallet (" +
       caller_wallet +
       ").",
     "",

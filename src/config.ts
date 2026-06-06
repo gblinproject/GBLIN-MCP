@@ -6,6 +6,9 @@
  */
 
 import type { Address } from "viem";
+import { createRequire } from "node:module";
+const require = createRequire(import.meta.url);
+const pkg = require("../package.json") as { version: string };
 
 // ─── Network ────────────────────────────────────────────────────────────────
 export const BASE_CHAIN_ID = 8453;
@@ -66,4 +69,4 @@ export const BASKET_CACHE_TTL_MS = 60_000; // 60 seconds
 
 // ─── Metadata ───────────────────────────────────────────────────────────────
 export const SERVER_NAME = "gblin-treasury-mcp";
-export const SERVER_VERSION = "0.1.0";
+export const SERVER_VERSION = pkg.version;

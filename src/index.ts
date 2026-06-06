@@ -3,7 +3,7 @@
  * GBLIN MCP Server — entry point.
  *
  * Speaks the Model Context Protocol over stdio. Clients (Claude Desktop,
- * AgentKit, Eliza, custom agents) discover and invoke the 5 GBLIN tools.
+ * AgentKit, Eliza, custom agents) discover and invoke the 8 GBLIN tools.
  *
  * IMPORTANT: never write to stdout via console.log — that channel is reserved
  * for MCP JSON-RPC frames. Use console.error (stderr) for diagnostics.

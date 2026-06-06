@@ -66,7 +66,7 @@ if x402_invoice_arrives  AND  usdc_balance < invoice_amount:
     call swap_gblin_to_usdc_jit, then pay
 \`\`\`
 
-## The 5 tools
+## The 8 tools
 
 | Tool | When to call it |
 | --- | --- |
@@ -75,6 +75,9 @@ if x402_invoice_arrives  AND  usdc_balance < invoice_amount:
 | \`swap_gblin_to_usdc_jit\` | Pay an x402 invoice — atomic GBLIN→USDC swap |
 | \`invest_usdc_to_gblin\` | Convert agent earnings (USDC) back into GBLIN |
 | \`analyze_treasury_health\` | Full balance, gas runway, rebalance hint |
+| \`get_governance_state\` | Verify 48h timelock ownership + pending ops |
+| \`share_skill_with_peer\` | Portable JSON skill seed for peer agent onboarding |
+| \`find_keeper_bounty\` | Check rebalance bounty availability — earn 0.0001 ETH |
 
 Docs: <https://gblin.digital/agents>
 Template source: <${TEMPLATE_URL}>

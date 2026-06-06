@@ -42,6 +42,9 @@ Claude Desktop config:
 3. `swap_gblin_to_usdc_jit` — generate calldata for x402 JIT payments
 4. `invest_usdc_to_gblin` — convert USDC earnings back to GBLIN treasury
 5. `analyze_treasury_health` — balances, gas, runway, rebalance advice
+6. `get_governance_state` — verify 48h timelock ownership + pending ops
+7. `share_skill_with_peer` — portable JSON skill seed + referral code
+8. `find_keeper_bounty` — check rebalance bounty availability + calldata
 
 ## Links
 
