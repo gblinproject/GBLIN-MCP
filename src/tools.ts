@@ -26,6 +26,7 @@ import { z } from "zod";
 
 import { ERC20_ABI, GBLIN_ABI, TIMELOCK_ABI } from "./abi.js";
 import { client } from "./client.js";
+import { requirePayment, TOOL_PRICES } from "./paywall.js";
 import {
   EXPECTED_MIN_DELAY_SECONDS,
   GBLIN_GUARDIAN,
@@ -46,6 +47,7 @@ import {
   getWalletBalances,
   quoteGblinForUsdc,
 } from "./helpers.js";
+import { PACKAGE_VERSION } from "./config.js";
 import { findKeeperBounty } from "./keeper.js";
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -275,7 +277,7 @@ const JitSwapSchema = z.object({
 export const JIT_SWAP_DEFINITION = {
   name: "swap_gblin_to_usdc_jit",
   description:
-    "Generate ready-to-broadcast calldata that converts GBLIN → USDC in a single atomic transaction via the contract's native sellGBLINForToken function. Works on any wallet (EOA, ERC-4337 smart account, EIP-7702). Use this immediately before paying an x402 invoice.",
+    "Generate ready-to-broadcast calldata that converts GBLIN → USDC in a single atomic transaction via the contract's native sellGBLINForToken function. Works on any wallet (EOA, ERC-4337 smart account, EIP-7702). Use this immediately before paying an x402 invoice. Free to call — revenue is captured on-chain via the 0.05% founder fee on every swap.",
   inputSchema: {
     type: "object" as const,
     properties: {
@@ -365,7 +367,7 @@ const InvestSchema = z.object({
 export const INVEST_DEFINITION = {
   name: "invest_usdc_to_gblin",
   description:
-    "Generate calldata to convert USDC earnings into GBLIN (treasury accumulation). Returns four sequential steps: (1) approve USDC to SwapRouter02, (2) swap USDC→WETH to wallet, (3) approve WETH to GBLIN contract, (4) buy GBLIN with WETH. Bypasses the broken exactInput path in the GBLIN contract.",
+    "Generate calldata to convert USDC earnings into GBLIN (treasury accumulation). Returns four sequential steps: (1) approve USDC to SwapRouter02, (2) swap USDC→WETH to wallet, (3) approve WETH to GBLIN contract, (4) buy GBLIN with WETH. Bypasses the broken exactInput path in the GBLIN contract. Free to call — revenue is captured on-chain via the 0.05% founder fee on every buy.",
   inputSchema: {
     type: "object" as const,
     properties: {
@@ -535,7 +537,7 @@ const AnalyzeSchema = z.object({
 export const ANALYZE_TREASURY_DEFINITION = {
   name: "analyze_treasury_health",
   description:
-    "Analyze an agent wallet's treasury health: GBLIN/USDC/ETH balances, gas runway, and (if daily_burn_usd provided) days of operational runway plus rebalance recommendation. Critical for autonomous decision-making.",
+    "Analyze an agent wallet's treasury health: GBLIN/USDC/ETH balances, gas runway, and (if daily_burn_usd provided) days of operational runway plus rebalance recommendation. Critical for autonomous decision-making. Costs $0.003 USDC per call via x402 — omit _payment on first call to receive the 402 payment manifest.",
   inputSchema: {
     type: "object" as const,
     properties: {
@@ -543,6 +545,10 @@ export const ANALYZE_TREASURY_DEFINITION = {
       daily_burn_usd: {
         type: "number",
         description: "Optional. Average daily spend in USD (e.g. 1.5).",
+      },
+      _payment: {
+        type: "string",
+        description: "Base64-encoded x402 PaymentProof JSON. Omit on first call to receive the 402 payment manifest.",
       },
     },
     required: ["wallet_address"],
@@ -1005,13 +1011,13 @@ async function handleShareSkillWithPeer(args: unknown): Promise<ReturnType<typeo
     },
     install: {
       npm_package: "@gblin-protocol/mcp-server",
-      version: "0.1.13",
-      install_command: "npm install -g @gblin-protocol/mcp-server@0.1.13",
+      version: PACKAGE_VERSION,
+      install_command: `npm install -g @gblin-protocol/mcp-server@${PACKAGE_VERSION}`,
       mcp_config_snippet: {
         mcpServers: {
           gblin: {
             command: "npx",
-            args: ["-y", "@gblin-protocol/mcp-server@0.1.13"],
+            args: ["-y", `@gblin-protocol/mcp-server@${PACKAGE_VERSION}`],
             env: {
               GBLIN_RPC_URL: "https://mainnet.base.org",
               GBLIN_REFERRER: referralCode,
@@ -1104,10 +1110,15 @@ async function handleShareSkillWithPeer(args: unknown): Promise<ReturnType<typeo
 const FIND_KEEPER_BOUNTY_DEFINITION = {
   name: "find_keeper_bounty",
   description:
-    "Check if there is a profitable rebalance opportunity on GBLIN right now. GBLIN PAYS the caller 0.0001 ETH to rebalance its treasury pool when it drifts. The swap uses the contract's own funds; the caller only pays gas. Returns ready-to-send calldata and the expected reward. Use this when an AI agent wants to earn passive ETH income as a keeper on Base.",
+    "Check if there is a profitable rebalance opportunity on GBLIN right now. GBLIN PAYS the caller 0.0001 ETH (~$0.30) to rebalance its treasury pool when it drifts. The swap uses the contract's own funds; the caller only pays gas. Returns ready-to-send calldata and the expected reward. Use this when an AI agent wants to earn passive ETH income as a keeper on Base. Costs $0.001 USDC per call via x402 — omit _payment on first call to receive the 402 payment manifest.",
   inputSchema: {
     type: "object" as const,
-    properties: {},
+    properties: {
+      _payment: {
+        type: "string",
+        description: "Base64-encoded x402 PaymentProof JSON. Omit on first call to receive the 402 payment manifest.",
+      },
+    },
     required: [],
     additionalProperties: false,
   },
@@ -1137,16 +1148,19 @@ export const TOOL_DEFINITIONS = [
   FIND_KEEPER_BOUNTY_DEFINITION,
 ];
 
-export const TOOL_HANDLERS: Record<
-  string,
-  (args: unknown) => Promise<ReturnType<typeof toolResult> | ReturnType<typeof toolError>>
-> = {
-  get_treasury_state: handleGetTreasuryState,
-  quote_safe_swap: handleQuoteSafeSwap,
-  swap_gblin_to_usdc_jit: handleJitSwap,
-  invest_usdc_to_gblin: handleInvest,
-  analyze_treasury_health: handleAnalyzeTreasury,
-  get_governance_state: handleGetGovernanceState,
+export const TOOL_HANDLERS: Record<string, (args: unknown) => Promise<unknown>> = {
+  // ── FREE tools ─────────────────────────────────────────────────────────────
+  // Read-only (funnel) + action tools kept free to avoid chicken-and-egg.
+  // On-chain founder fee (0.05%) captures revenue from every swap/buy.
+  get_treasury_state:    handleGetTreasuryState,
+  quote_safe_swap:       handleQuoteSafeSwap,
+  get_governance_state:  handleGetGovernanceState,
   share_skill_with_peer: handleShareSkillWithPeer,
-  find_keeper_bounty: handleFindKeeperBounty,
+  swap_gblin_to_usdc_jit: handleJitSwap,
+  invest_usdc_to_gblin:   handleInvest,
+
+  // ── PAID tools (x402 intelligence layer) ──────────────────────────────────
+  // Analysis and keeper discovery — these are "advice", not transport.
+  analyze_treasury_health: requirePayment({ priceUsdc: "0.003", priceLabel: "$0.003 USDC per call" }, handleAnalyzeTreasury),
+  find_keeper_bounty:      requirePayment({ priceUsdc: "0.001", priceLabel: "$0.001 USDC per call" }, handleFindKeeperBounty),
 };

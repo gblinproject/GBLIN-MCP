@@ -10,6 +10,9 @@ import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const pkg = require("../package.json") as { version: string };
 
+// ─── Version ────────────────────────────────────────────────────────────────
+export const PACKAGE_VERSION = pkg.version;
+
 // ─── Network ────────────────────────────────────────────────────────────────
 export const BASE_CHAIN_ID = 8453;
 // publicnode.com is a free, no-key, generously-rated Base mainnet RPC

@@ -168,20 +168,76 @@ Also supports Cline, Continue.dev, and any agent that implements the MCP client 
 
 ## The 8 tools
 
+### Free tools (no payment required)
+
 | Tool | Purpose |
 |---|---|
 | `get_treasury_state` | NAV in USD + basket composition + Crash Shield status |
 | `quote_safe_swap` | Preview buy or sell with dynamic slippage buffer |
-| `swap_gblin_to_usdc_jit` | **The x402 magic**: generate atomic GBLIN→USDC calldata |
-| `invest_usdc_to_gblin` | Convert USDC earnings into GBLIN treasury (MEV-safe) |
-| `analyze_treasury_health` | Balances + gas + runway + rebalance advice |
+| `swap_gblin_to_usdc_jit` | **The x402 magic**: generate atomic GBLIN→USDC calldata (free) |
+| `invest_usdc_to_gblin` | Convert USDC earnings into GBLIN treasury (MEV-safe) (free) |
 | `get_governance_state` | Verify owner == 48h Timelock + pending asset proposals + min delay |
 | `share_skill_with_peer` | Generate a portable skill seed to onboard a peer agent + embedded referral code |
-| `find_keeper_bounty` | **GBLIN pays you**: check if a rebalance bounty is available (0.0001 ETH reward, no capital required) |
+
+### Paid tools (x402 micropayments)
+
+| Tool | Price | Purpose |
+|---|---|---|
+| `analyze_treasury_health` | $0.003 USDC | Balances + gas + runway + rebalance advice |
+| `find_keeper_bounty` | $0.001 USDC | **GBLIN pays you**: check if a rebalance bounty is available (0.0001 ETH reward, no capital required) |
 
 All tools return structured JSON. All values are quoted on-chain (NAV via `quoteSellGBLIN` × Chainlink ETH/USD, with 24h staleness guard). No mock data.
 
 **Live verification:** the test suite (`npm test`) runs all eight tools against Base mainnet and confirms calldata generation, oracle freshness, slippage math, and governance state. See the [latest CI run](https://github.com/gblinproject/GBLIN-MCP/actions).
+
+---
+
+## x402 micropayments
+
+The paid tools use the **x402 protocol** for instant micropayments. Here's how it works:
+
+### Payment flow
+
+1. **First call** (without payment): The tool returns a 402 manifest with payment details
+2. **Pay via facilitator**: Send a POST request to the facilitator with the payment details
+3. **Receive PaymentProof**: The facilitator returns a signed proof of payment
+4. **Second call** (with `_payment`): Include the base64-encoded PaymentProof in the `_payment` field
+
+### Example (analyze_treasury_health)
+
+```bash
+# Step 1: Get payment manifest
+npx @gblin-protocol/mcp-server analyze_treasury_health '{"wallet_address":"0x..."}'
+# Returns: 402 error with payment details
+
+# Step 2: Pay via facilitator
+curl -X POST https://x402.org/facilitator/pay \
+  -H "Content-Type: application/json" \
+  -d '{
+    "amount": "0.003",
+    "currency": "USDC", 
+    "recipient": "0x0ebA5d314F4f5Dcb7A094953Fa9311a45172dd1B",
+    "chainId": 8453
+  }'
+# Returns: PaymentProof JSON
+
+# Step 3: Call tool with payment
+npx @gblin-protocol/mcp-server analyze_treasury_health \
+  '{"wallet_address":"0x...", "_payment":"<base64 PaymentProof>"}'
+# Returns: Treasury analysis results
+```
+
+### Payment recipients
+
+- **Default recipient**: `0x0ebA5d314F4f5Dcb7A094953Fa9311a45172dd1B`
+- **Override**: Set `RECIPIENT_WALLET` environment variable to use your own wallet
+
+### Supported facilitators
+
+- **Primary**: `https://xx402.org/facilitator` (Coinbase-maintained reference implementation)
+- **Override**: Set `X402_FACILITATOR_URL` environment variable
+
+All payments are processed on **Base mainnet** using USDC (0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913).
 
 ---
 

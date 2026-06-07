@@ -42,7 +42,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       ],
     };
   }
-  return handler(args ?? {});
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return handler(args ?? {}) as any;
 });
 
 async function main(): Promise<void> {
