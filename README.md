@@ -234,7 +234,7 @@ npx @gblin-protocol/mcp-server analyze_treasury_health \
 
 ### Supported facilitators
 
-- **Primary**: `https://xx402.org/facilitator` (Coinbase-maintained reference implementation)
+- **Primary**: `https://x402.org/facilitator` (Coinbase-maintained reference implementation)
 - **Override**: Set `X402_FACILITATOR_URL` environment variable
 
 All payments are processed on **Base mainnet** using USDC (0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913).
