@@ -408,9 +408,30 @@ Discovery:
 
 Any agent using this MCP server can call `base-risk-pulse` before investing to gate treasury actions on current market risk signal.
 
+## GBLIN Aureus — Autonomous Trading Agent (Track-Record Engine)
+
+[Aureus](https://gblin.digital/aureus) is an autonomous catalyst & rotation agent that trades crypto, equities, indices and metals on Base — and **cannot lie about its results**: every thesis is keccak-hashed and committed on-chain *before* the agent acts, then revealed at close. Win or lose, the record is permanent and independently verifiable. No cherry-picked screenshots.
+
+**Status: DRY-RUN validation.** Aureus runs the full loop on live market data with zero real funds. It graduates to real capital only if it passes a public gate: 30–50 closed trades, profit factor > 1.3, max drawdown < 10%, zero liquidations. The live dashboard publishes every metric in real time: [gblin.digital/aureus](https://gblin.digital/aureus).
+
+Under the hood (the boring parts that keep capital alive):
+
+- **Risk engine**: volatility-targeted sizing, stops always inside the liquidation distance, mark-to-market equity with automatic drawdown halt, 10-second stop watcher
+- **Multi-venue funding carry**: delta-neutral funding harvest confirmed across Binance/Bybit/OKX medians, with persistence gating (regimes, not single prints)
+- **Multi-timeframe alignment**: fast mean-reversion signals are gated by the daily trend (time-series momentum, the most documented edge in finance)
+- **Microstructure eyes**: taker-flow (CVD) and order-book imbalance veto entries the tape opposes
+- **Shadow book**: every rejected strategy keeps paper-trading on live data; capital allocation follows statistical proof, never opinion
+- **News sentinel**: a multi-LLM consensus ensemble (6 independent providers) reads verified headlines into a risk signal — the math decides every entry, the LLMs only modulate
+
+Aureus is also a planned GBLIN treasury user: idle capital parks in GBLIN via this MCP server and JIT-swaps to USDC when margin is needed — the agent eating the protocol's own cooking.
+
+- **Live dashboard:** https://gblin.digital/aureus
+- **Announcement:** [@GBLIN_Protocol on X](https://x.com/GBLIN_Protocol/status/2065196097207685240)
+
 ## Related Repositories
 
 - **Smart Contract & Protocol:** https://github.com/gblinproject/GBLIN-Protocol
 - **Web App & x402 Endpoints:** https://github.com/gblinproject/GBLIN_WEBAPP
 - **ElizaOS Plugin:** https://github.com/gblinproject/GBLIN_PLUGIN
 - **GBLIN Sentinel (x402 data agent):** https://github.com/gblinproject/gblin-sentinel
+- **GBLIN Aureus (autonomous trading agent):** https://gblin.digital/aureus — dry-run validation, on-chain commit-reveal track record
