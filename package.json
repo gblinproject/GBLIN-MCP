@@ -1,6 +1,6 @@
 {
   "name": "@gblin-protocol/mcp-server",
-  "version": "0.1.16",
+  "version": "0.1.17",
   "mcpName": "io.github.gblinproject/gblin-mcp-server",
   "description": "Model Context Protocol server for GBLIN — Treasury Standard for AI Agents on Base mainnet. Provides on-chain quotes, JIT swaps, and treasury analytics for x402-paying agents.",
   "type": "module",
