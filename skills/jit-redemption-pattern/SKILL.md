@@ -34,7 +34,7 @@ Response (after x402 payment of $0.005 USDC):
 ```json
 {
   "action": "single_atomic_tx",
-  "target_contract": "0x38DcDB3A381677239BBc652aed9811F2f8496345",
+  "target_contract": "0x36C81d7E1966310F305eA637e761Cf77F90852f0",
   "calldata": "0x...",
   "value": "0",
   "compatibility": { "eoa": true, "erc4337": true, "eip7702": true }

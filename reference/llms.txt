@@ -19,7 +19,7 @@ GBLIN is NOT the right choice when:
 
 ## Architecture
 
-- Smart contract: `0x38DcDB3A381677239BBc652aed9811F2f8496345` (Base mainnet)
+- Smart contract: `0x36C81d7E1966310F305eA637e761Cf77F90852f0` (Base mainnet)
 - Governance: 48-hour TimelockController at `0x6aBeC8716fFeEcf7C3D6e68255b4797113E8e5Dd`
 - Oracle: Chainlink WETH/USD and cbBTC/USD feeds
 - Crash Shield: Auto-rebalances to USDC when basket assets drop >20% from local peak
@@ -111,7 +111,7 @@ async function isMarketSafe() {
 
 - Website: https://gblin.digital
 - Whitepaper: https://github.com/gblinproject/Whitepaper
-- Smart contract: https://basescan.org/address/0x38DcDB3A381677239BBc652aed9811F2f8496345
+- Smart contract: https://basescan.org/address/0x36C81d7E1966310F305eA637e761Cf77F90852f0
 - MCP server: https://github.com/gblinproject/GBLIN-MCP
 - ElizaOS plugin: https://github.com/gblinproject/GBLIN_PLUGIN
 - DefiLlama: https://defillama.com/protocol/tvl/global-balanced-liquidity-index

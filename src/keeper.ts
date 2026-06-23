@@ -1,7 +1,7 @@
 import { createPublicClient, http, encodeFunctionData, formatEther } from 'viem';
 import { base } from 'viem/chains';
 
-const GBLIN = '0x38DcDB3A381677239BBc652aed9811F2f8496345' as const;
+const GBLIN = '0x36C81d7E1966310F305eA637e761Cf77F90852f0' as const;
 const WETH = '0x4200000000000000000000000000000000000006' as const;
 const BPS = 10000n;
 const REWARD = 100000000000000n;        // 0.0001 ether

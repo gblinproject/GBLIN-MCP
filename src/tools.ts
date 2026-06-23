@@ -367,7 +367,7 @@ const InvestSchema = z.object({
 export const INVEST_DEFINITION = {
   name: "invest_usdc_to_gblin",
   description:
-    "Generate calldata to convert USDC earnings into GBLIN (treasury accumulation). Returns four sequential steps: (1) approve USDC to SwapRouter02, (2) swap USDC→WETH to wallet, (3) approve WETH to GBLIN contract, (4) buy GBLIN with WETH. Bypasses the broken exactInput path in the GBLIN contract. Free to call — revenue is captured on-chain via the 0.05% founder fee on every buy.",
+    "Generate calldata to convert USDC into GBLIN directly (treasury accumulation). V6 supports single-asset in-kind buys, so it returns just two steps: (1) approve USDC to the GBLIN contract, (2) buyGBLINInKind(USDC, amount, minGblinOut). No Uniswap swap, no WETH leg. Free to call - revenue is captured on-chain via the 0.05% founder fee on every buy.",
   inputSchema: {
     type: "object" as const,
     properties: {
@@ -377,7 +377,7 @@ export const INVEST_DEFINITION = {
       },
       wallet_address: {
         type: "string",
-        description: "User's wallet address to receive WETH and sign transactions.",
+        description: "User's wallet address that holds the USDC and signs the transactions.",
       },
     },
     required: ["usdc_amount", "wallet_address"],
@@ -418,58 +418,29 @@ export async function handleInvest(args: unknown) {
       );
     }
 
-    // Step 2: quote GBLIN out from the contract using the min WETH amount.
+    // Quote GBLIN out: value the USDC in ETH terms (USDC ~ $1) via the contract's
+    // own buy quote, then buffer with dynamic slippage so the call won't revert.
     const [gblinExpected] = await client.readContract({
       address: GBLIN_V5,
       abi: GBLIN_ABI,
       functionName: "quoteBuyGBLIN",
-      args: [minWethOut],
+      args: [wethExpected],
     });
     const minGblinOut = applySlippageBuffer(gblinExpected, slippage.bps);
 
-    // Step 1: Approve USDC to SwapRouter02 for the swap
-    const approveRouterCalldata = encodeFunctionData({
+    // V6 buys USDC DIRECTLY (in-kind) - no Uniswap swap needed. Two steps only:
+    //   1) approve USDC to the GBLIN contract
+    //   2) buyGBLINInKind(USDC, amountIn, minGblinOut)
+    const approveUsdcCalldata = encodeFunctionData({
       abi: ERC20_ABI,
       functionName: "approve",
-      args: [SWAP_ROUTER_02, usdcUnits],
+      args: [GBLIN_V5, usdcUnits],
     });
-
-    // Step 2: Swap USDC→WETH via exactInputSingle (NO deadline — works with SwapRouter02)
-    // WETH goes to user's wallet (not directly to GBLIN) — required for subsequent approve
-    const swapCalldata = encodeFunctionData({
-      abi: SWAP_ROUTER_ABI,
-      functionName: "exactInputSingle",
-      args: [
-        {
-          tokenIn: USDC,
-          tokenOut: WETH,
-          fee: WETH_USDC_POOL_FEE,
-          recipient: parsed.wallet_address, // WETH goes to user wallet
-          amountIn: usdcUnits,
-          amountOutMinimum: minWethOut,
-          sqrtPriceLimitX96: 0n,
-        },
-      ],
-    });
-
-    // Step 3: Approve WETH to GBLIN contract (required for buyGBLINWithToken transferFrom)
-    const approveWethCalldata = encodeFunctionData({
-      abi: ERC20_ABI,
-      functionName: "approve",
-      args: [GBLIN_V5, minWethOut],
-    });
-
-    // Step 4: Buy GBLIN with WETH — when tokenIn is WETH, contract skips Uniswap
-    // Path encoding: WETH -> (fee=0) -> WETH (dummy, contract ignores it when tokenIn==WETH)
-    const gblinPath = encodePacked(
-      ["address", "uint24", "address"],
-      [WETH, 0, WETH] // fee=0, path dummy — contract uses amountIn directly as WETH
-    );
 
     const buyCalldata = encodeFunctionData({
       abi: GBLIN_ABI,
-      functionName: "buyGBLINWithToken",
-      args: [gblinPath, minWethOut, 0n, minGblinOut], // amountIn = WETH received, minWethOut=0
+      functionName: "buyGBLINInKind",
+      args: [USDC, usdcUnits, minGblinOut],
     });
 
     return toolResult({
@@ -477,28 +448,14 @@ export async function handleInvest(args: unknown) {
       steps: [
         {
           step: 1,
-          description: "Approve USDC to SwapRouter02 for WETH swap",
+          description: "Approve USDC to the GBLIN V6 contract",
           target: USDC,
-          calldata: appendBuilderCode(approveRouterCalldata),
+          calldata: appendBuilderCode(approveUsdcCalldata),
           value: "0",
         },
         {
           step: 2,
-          description: "Swap USDC→WETH via SwapRouter02 exactInputSingle (WETH to wallet)",
-          target: SWAP_ROUTER_02,
-          calldata: swapCalldata,
-          value: "0",
-        },
-        {
-          step: 3,
-          description: "Approve WETH to GBLIN contract",
-          target: WETH,
-          calldata: appendBuilderCode(approveWethCalldata),
-          value: "0",
-        },
-        {
-          step: 4,
-          description: "Buy GBLIN with WETH (WETH path skips broken Uniswap call)",
+          description: "Buy GBLIN directly with USDC (V6 in-kind mint, no swap)",
           target: GBLIN_V5,
           calldata: buyCalldata,
           value: "0",
@@ -506,14 +463,13 @@ export async function handleInvest(args: unknown) {
       ],
       expected: {
         usdc_in: parsed.usdc_amount,
-        weth_min: formatUnits(minWethOut, 18),
         gblin_min: formatUnits(minGblinOut, 18),
         slippage_buffer_pct: slippage.pct,
       },
       security: {
         mev_protected: true,
         min_outs_set: true,
-        note: "minWethOut and minGblinOut are both > 0, computed from on-chain quotes + dynamic slippage. Reverts on bad execution.",
+        note: "minGblinOut > 0, computed from the on-chain quote + dynamic slippage. Reverts on bad execution. No Uniswap swap - USDC is deposited directly as in-kind collateral.",
       },
     });
   } catch (err) {

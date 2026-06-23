@@ -5,7 +5,7 @@
 [![npm](https://img.shields.io/npm/v/@gblin-protocol/mcp-server.svg)](https://www.npmjs.com/package/@gblin-protocol/mcp-server)
 [![CI](https://github.com/gblinproject/GBLIN-MCP/actions/workflows/ci.yml/badge.svg)](https://github.com/gblinproject/GBLIN-MCP/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Base Mainnet](https://img.shields.io/badge/network-Base%20mainnet-0052FF)](https://basescan.org/address/0x38DcDB3A381677239BBc652aed9811F2f8496345)
+[![Base Mainnet](https://img.shields.io/badge/network-Base%20mainnet-0052FF)](https://basescan.org/address/0x36C81d7E1966310F305eA637e761Cf77F90852f0)
 [![Governance: 48h Timelock](https://img.shields.io/badge/governance-48h%20Timelock-1f6feb)](https://basescan.org/address/0x6aBeC8716fFeEcf7C3D6e68255b4797113E8e5Dd)
 [![Base MCP Plugin](https://img.shields.io/badge/Base%20MCP-PR%20%2356-blue)](https://github.com/base/skills/pull/56)
 [![x402 Manifest](https://img.shields.io/badge/x402-manifest-green)](https://gblin.digital/.well-known/x402)
@@ -64,11 +64,11 @@ written** during postinstall — security-friendly and Socket-compliant. Set
 
 ## Trust & Governance
 
-**GBLIN_V5 is owned by a 48h Timelock Controller** — every admin operation (parameter change, oracle update, ownership transfer) is enforced on-chain to wait **172,800 seconds** before execution. Agents and integrators can verify this directly on BaseScan.
+**GBLIN V6 is governed by a 48h Timelock Controller** — every admin operation (parameter change, oracle update, ownership transfer) is enforced on-chain to wait **172,800 seconds** before execution. Agents and integrators can verify this directly on BaseScan.
 
 | Component | Address | Role |
 |---|---|---|
-| **GBLIN_V5 token** | [`0x38DcDB3A...6345`](https://basescan.org/address/0x38DcDB3A381677239BBc652aed9811F2f8496345) | Index contract — owned by timelock |
+| **GBLIN V6 token** | [`0x36C81d7E...52f0`](https://basescan.org/address/0x36C81d7E1966310F305eA637e761Cf77F90852f0) | Index contract (production) |
 | **Timelock Controller** | [`0x6aBeC8716...8e5Dd`](https://basescan.org/address/0x6aBeC8716fFeEcf7C3D6e68255b4797113E8e5Dd) | 48h immutable delay, 14d grace period |
 | **Ownership transfer tx** | [`0xb653f54f...edaaf`](https://basescan.org/tx/0xb653f54ffa9b1764b41932e6a411077e7e34550605303f15d90900de682edaaf) | Transferred at block 46160610 |
 
@@ -336,7 +336,7 @@ scripts/
 
 ## Links
 
-- **Contract**: [0x38DcDB3A38…6345](https://basescan.org/address/0x38DcDB3A381677239BBc652aed9811F2f8496345)
+- **Contract**: [0x36C81d7E19…52f0](https://basescan.org/address/0x36C81d7E1966310F305eA637e761Cf77F90852f0)
 - **Protocol site**: https://gblin.digital
 - **Agent docs**: https://gblin.digital/agents
 - **Issues**: https://github.com/gblinproject/GBLIN-MCP/issues
@@ -372,7 +372,7 @@ When the treasury pool drifts from its target allocation, any agent can call `fi
   "bountyAvailable": true,
   "direction": "WETH->asset",
   "estimatedRewardEth": "0.0001",
-  "target": "0x38DcDB3A381677239BBc652aed9811F2f8496345",
+  "target": "0x36C81d7E1966310F305eA637e761Cf77F90852f0",
   "calldata": "0x...",
   "value": "0",
   "note": "Send this calldata to earn the reward. The swap uses the contract's own funds."

@@ -2,7 +2,7 @@ import { createPublicClient, http, formatUnits } from 'viem';
 import { base } from 'viem/chains';
 
 const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as const;
-const GBLIN = '0x38DcDB3A381677239BBc652aed9811F2f8496345' as const;
+const GBLIN = '0x36C81d7E1966310F305eA637e761Cf77F90852f0' as const;
 
 const ERC20_ABI = [{
   inputs: [{ name: 'account', type: 'address' }],

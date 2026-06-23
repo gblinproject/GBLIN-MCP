@@ -42,6 +42,8 @@ export const GBLIN_ABI = parseAbi([
   "function sellGBLINForEth(uint256 gblinAmount, uint256 minEthOut)",
   "function sellGBLINForToken(uint256 gblinAmount, address targetToken, uint24 wethToTargetFee, uint256 minTokenOut)",
   "function buyGBLINWithToken(bytes path, uint256 amountIn, uint256 minWethOut, uint256 minGblinOut)",
+  // V6: direct single-asset in-kind buy (deposit USDC directly, no swap)
+  "function buyGBLINInKind(address token, uint256 amountIn, uint256 minGblinOut)",
 ]);
 
 /**

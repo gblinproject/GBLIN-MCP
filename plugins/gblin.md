@@ -15,7 +15,7 @@ This plugin fetches unsigned calldata from the GBLIN MCP server (`@gblin-protoco
 
 **Supported chain:** Base mainnet (`8453` / `0x2105`).
 
-**Contract (V5, production):** `0x38DcDB3A381677239BBc652aed9811F2f8496345`
+**Contract (V6, production):** `0x36C81d7E1966310F305eA637e761Cf77F90852f0`
 
 **Timelock (owner since 18 May 2026):** `0x6aBeC8716fFeEcf7C3D6e68255b4797113E8e5Dd` — 48h delay, immutable.
 
@@ -106,7 +106,7 @@ Args: {
 Returns: {
   transactions: [
     { step: "approve", to: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", data: "0x...", value: "0x0", chainId: 8453 },
-    { step: "buy",     to: "0x38DcDB3A381677239BBc652aed9811F2f8496345", data: "0x...", value: "0x0", chainId: 8453 }
+    { step: "buy",     to: "0x36C81d7E1966310F305eA637e761Cf77F90852f0", data: "0x...", value: "0x0", chainId: 8453 }
   ]
 }
 ```
@@ -129,7 +129,7 @@ Args: {
 }
 Returns: {
   transactions: [
-    { step: "sell", to: "0x38DcDB3A381677239BBc652aed9811F2f8496345", data: "0x...", value: "0x0", chainId: 8453 }
+    { step: "sell", to: "0x36C81d7E1966310F305eA637e761Cf77F90852f0", data: "0x...", value: "0x0", chainId: 8453 }
   ]
 }
 ```
@@ -219,7 +219,7 @@ For multi-step flows (approve + buy), include both calls in the same `send_calls
 
 | Asset | Address |
 |-------|---------|
-| GBLIN V5 contract | `0x38DcDB3A381677239BBc652aed9811F2f8496345` |
+| GBLIN V6 contract | `0x36C81d7E1966310F305eA637e761Cf77F90852f0` |
 | GBLIN Timelock | `0x6aBeC8716fFeEcf7C3D6e68255b4797113E8e5Dd` |
 | USDC (Base) | `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` |
 | WETH (Base) | `0x4200000000000000000000000000000000000006` |
@@ -237,4 +237,4 @@ For multi-step flows (approve + buy), include both calls in the same `send_calls
 - Aerodrome pool: https://dexscreener.com/base/0x7dcd4f5bcdae0546c84dab54401a93ad6e92ae1b
 - Morpho market: https://app.morpho.org/base/market/0x8f086a90c1a92be751ac641f2a1ca6458695889bf50a6caba9566b4c9c585a62/gblin-usdc
 - DeFiLlama TVL: https://defillama.com/protocol/tvl/global-balanced-liquidity-index
-- BaseScan: https://basescan.org/address/0x38DcDB3A381677239BBc652aed9811F2f8496345
+- BaseScan: https://basescan.org/address/0x36C81d7E1966310F305eA637e761Cf77F90852f0

@@ -38,7 +38,7 @@ export const RPC_URL =
   _rawRpc && isValidHttpUrl(_rawRpc) ? _rawRpc : DEFAULT_RPC_URL;
 
 // ─── Core Contracts (Base Mainnet, verified) ────────────────────────────────
-export const GBLIN_V5: Address = "0x38DcDB3A381677239BBc652aed9811F2f8496345";
+export const GBLIN_V5: Address = "0x36C81d7E1966310F305eA637e761Cf77F90852f0";
 export const USDC: Address = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 export const WETH: Address = "0x4200000000000000000000000000000000000006";
 

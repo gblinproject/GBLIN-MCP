@@ -103,6 +103,6 @@ For agents that truly need downside protection, use:
 
 ## References
 
-- GBLIN smart contract: https://basescan.org/address/0x38DcDB3A381677239BBc652aed9811F2f8496345
+- GBLIN smart contract: https://basescan.org/address/0x36C81d7E1966310F305eA637e761Cf77F90852f0
 - Chainlink Base oracles: https://data.chain.link/feeds/base
 - Treasury patterns: `skills/base-agent-treasury`

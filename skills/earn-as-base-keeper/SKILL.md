@@ -24,7 +24,7 @@ GBLIN is a treasury-backed index (cbBTC / WETH / USDC). When its on-chain alloca
 
 The caller only pays gas (~$0.01 on Base). Net profit per successful rebalance is roughly the reward minus gas.
 
-Contract: `0x38DcDB3A381677239BBc652aed9811F2f8496345` (Base mainnet, chain id 8453)
+Contract: `0x36C81d7E1966310F305eA637e761Cf77F90852f0` (Base mainnet, chain id 8453)
 
 ## How to earn (step by step)
 
@@ -51,7 +51,7 @@ import { createPublicClient, createWalletClient, http } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { base } from 'viem/chains';
 
-const GBLIN = '0x38DcDB3A381677239BBc652aed9811F2f8496345';
+const GBLIN = '0x36C81d7E1966310F305eA637e761Cf77F90852f0';
 
 // 1. Read basket(i) for each asset: token, oracle, dynamicWeight
 // 2. Read each asset's balanceOf(GBLIN) and Chainlink price via latestRoundData
@@ -82,7 +82,7 @@ If your agent framework supports the GBLIN `share_skill_with_peer` tool, you can
 
 ## References
 
-- GBLIN contract on Basescan: https://basescan.org/address/0x38DcDB3A381677239BBc652aed9811F2f8496345
+- GBLIN contract on Basescan: https://basescan.org/address/0x36C81d7E1966310F305eA637e761Cf77F90852f0
 - Keeper leaderboard: https://gblin.digital/keepers
 - MCP server: https://github.com/gblinproject/GBLIN-MCP
 - Treasury patterns: skills/base-agent-treasury
