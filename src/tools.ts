@@ -277,7 +277,7 @@ const JitSwapSchema = z.object({
 export const JIT_SWAP_DEFINITION = {
   name: "swap_gblin_to_usdc_jit",
   description:
-    "Generate ready-to-broadcast calldata that converts GBLIN → USDC in a single atomic transaction via the contract's native sellGBLINForToken function. Works on any wallet (EOA, ERC-4337 smart account, EIP-7702). Use this immediately before paying an x402 invoice. Free to call — revenue is captured on-chain via the 0.05% founder fee on every swap.",
+    "Generate ready-to-broadcast calldata that converts GBLIN → USDC in two steps on V6: (1) sellGBLINForEth to redeem GBLIN to ETH, then (2) a Uniswap WETH->USDC swap. V6 removed the single-tx sellGBLINForToken, so this returns two sequential transactions (EOAs sign twice; ERC-4337 / EIP-7702 wallets can batch them into one UserOp). Use this immediately before paying an x402 invoice. Free to call — revenue is captured on-chain via the 0.05% founder fee on every swap.",
   inputSchema: {
     type: "object" as const,
     properties: {
@@ -313,25 +313,66 @@ export async function handleJitSwap(args: unknown) {
     // 2. Reverse quote: how much GBLIN to sell?
     const quote = await quoteGblinForUsdc(parsed.usdc_needed);
 
-    // 3. Build calldata for native atomic swap
-    const calldata = encodeFunctionData({
+    // 3a. Quote the ETH leg: how much ETH sellGBLINForEth returns for that GBLIN.
+    const ethExpected = await client.readContract({
+      address: GBLIN_V5,
       abi: GBLIN_ABI,
-      functionName: "sellGBLINForToken",
+      functionName: "quoteSellGBLIN",
+      args: [quote.gblinToSell],
+    });
+    const minEthOut = applySlippageBuffer(ethExpected, quote.slippage.bps);
+    if (minEthOut === 0n) {
+      return toolError("Quote returned zero ETH out - oracle stale or amount too small.");
+    }
+
+    // V6 removed sellGBLINForToken. GBLIN -> USDC is now two steps:
+    //   TX1: sellGBLINForEth(gblin, minEthOut)  -> agent receives ETH
+    //   TX2: Uniswap exactInputSingle WETH->USDC, paid with the ETH received.
+    // TX2 amountIn = minEthOut (the GUARANTEED minimum from TX1), so the second tx
+    // can never request more ETH than the first actually delivered.
+    const sellCalldata = encodeFunctionData({
+      abi: GBLIN_ABI,
+      functionName: "sellGBLINForEth",
+      args: [quote.gblinToSell, minEthOut],
+    });
+
+    const swapCalldata = encodeFunctionData({
+      abi: SWAP_ROUTER_ABI,
+      functionName: "exactInputSingle",
       args: [
-        quote.gblinToSell,
-        USDC,
-        WETH_USDC_POOL_FEE,
-        quote.minUsdcOut,
+        {
+          tokenIn: WETH,
+          tokenOut: USDC,
+          fee: WETH_USDC_POOL_FEE,
+          recipient: parsed.wallet_address,
+          amountIn: minEthOut,
+          amountOutMinimum: quote.minUsdcOut,
+          sqrtPriceLimitX96: 0n,
+        },
       ],
     });
 
     return toolResult({
-      action: "single_atomic_tx",
-      target_contract: GBLIN_V5,
-      calldata: appendBuilderCode(calldata),
-      value: "0",
+      action: "sequential_txs",
+      steps: [
+        {
+          step: 1,
+          description: "Redeem GBLIN to ETH on the GBLIN contract (sellGBLINForEth)",
+          target: GBLIN_V5,
+          calldata: appendBuilderCode(sellCalldata),
+          value: "0",
+        },
+        {
+          step: 2,
+          description: "Swap the received ETH to USDC via Uniswap V3 (WETH->USDC)",
+          target: SWAP_ROUTER_02,
+          calldata: swapCalldata,
+          value: minEthOut.toString(),
+        },
+      ],
       params: {
         gblin_amount: formatUnits(quote.gblinToSell, 18),
+        eth_min_out: formatUnits(minEthOut, 18),
         target_token: USDC,
         pool_fee: WETH_USDC_POOL_FEE,
         min_usdc_out: formatUnits(quote.minUsdcOut, 6),
@@ -346,7 +387,7 @@ export async function handleJitSwap(args: unknown) {
         eoa: true,
         erc4337: true,
         eip7702: true,
-        note: "Single contract call — no batching needed for atomicity.",
+        note: "V6 path is two steps (sellGBLINForEth + Uniswap WETH->USDC). EOAs sign twice; ERC-4337 / EIP-7702 wallets can batch both into one UserOp for atomicity. Both legs carry a minOut, so there is no sandwich surface.",
       },
       gas_hint: 600_000,
     });
