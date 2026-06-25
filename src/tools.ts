@@ -31,7 +31,7 @@ import {
   EXPECTED_MIN_DELAY_SECONDS,
   GBLIN_GUARDIAN,
   GBLIN_TIMELOCK,
-  GBLIN_V5,
+  GBLIN_V6,
   MIN_DEPOSIT_WEI,
   USDC,
   WETH,
@@ -152,7 +152,7 @@ export async function handleGetTreasuryState() {
         pool_fee_bps: e.poolFee,
       })),
       meta: {
-        contract: GBLIN_V5,
+        contract: GBLIN_V6,
         chain: "base",
         chain_id: 8453,
       },
@@ -212,7 +212,7 @@ export async function handleQuoteSafeSwap(args: unknown) {
       }
 
       const [gblinOut, founderFee, stabFee] = await client.readContract({
-        address: GBLIN_V5,
+        address: GBLIN_V6,
         abi: GBLIN_ABI,
         functionName: "quoteBuyGBLIN",
         args: [amountWei],
@@ -238,7 +238,7 @@ export async function handleQuoteSafeSwap(args: unknown) {
 
     // sell
     const ethOut = await client.readContract({
-      address: GBLIN_V5,
+      address: GBLIN_V6,
       abi: GBLIN_ABI,
       functionName: "quoteSellGBLIN",
       args: [amountWei],
@@ -315,7 +315,7 @@ export async function handleJitSwap(args: unknown) {
 
     // 3a. Quote the ETH leg: how much ETH sellGBLINForEth returns for that GBLIN.
     const ethExpected = await client.readContract({
-      address: GBLIN_V5,
+      address: GBLIN_V6,
       abi: GBLIN_ABI,
       functionName: "quoteSellGBLIN",
       args: [quote.gblinToSell],
@@ -358,7 +358,7 @@ export async function handleJitSwap(args: unknown) {
         {
           step: 1,
           description: "Redeem GBLIN to ETH on the GBLIN contract (sellGBLINForEth)",
-          target: GBLIN_V5,
+          target: GBLIN_V6,
           calldata: appendBuilderCode(sellCalldata),
           value: "0",
         },
@@ -462,7 +462,7 @@ export async function handleInvest(args: unknown) {
     // Quote GBLIN out: value the USDC in ETH terms (USDC ~ $1) via the contract's
     // own buy quote, then buffer with dynamic slippage so the call won't revert.
     const [gblinExpected] = await client.readContract({
-      address: GBLIN_V5,
+      address: GBLIN_V6,
       abi: GBLIN_ABI,
       functionName: "quoteBuyGBLIN",
       args: [wethExpected],
@@ -475,7 +475,7 @@ export async function handleInvest(args: unknown) {
     const approveUsdcCalldata = encodeFunctionData({
       abi: ERC20_ABI,
       functionName: "approve",
-      args: [GBLIN_V5, usdcUnits],
+      args: [GBLIN_V6, usdcUnits],
     });
 
     const buyCalldata = encodeFunctionData({
@@ -497,7 +497,7 @@ export async function handleInvest(args: unknown) {
         {
           step: 2,
           description: "Buy GBLIN directly with USDC (V6 in-kind mint, no swap)",
-          target: GBLIN_V5,
+          target: GBLIN_V6,
           calldata: buyCalldata,
           value: "0",
         },
@@ -674,7 +674,7 @@ const GovernanceStateSchema = z.object({
 export const GET_GOVERNANCE_STATE_DEFINITION = {
   name: "get_governance_state",
   description:
-    "Verify GBLIN protocol governance state: confirms whether GBLIN_V5 is owned by the 48h Timelock, reads the timelock's min delay and grace period, reports role member counts, and surfaces any pending asset-addition proposal on the index contract. If an operation_id is provided, also reports the status of that specific timelock operation. Read-only — use this to gate trust-sensitive agent actions.",
+    "Verify GBLIN protocol governance state: confirms whether GBLIN_V6 is owned by the 48h Timelock, reads the timelock's min delay and grace period, reports role member counts, and surfaces any pending asset-addition proposal on the index contract. If an operation_id is provided, also reports the status of that specific timelock operation. Read-only — use this to gate trust-sensitive agent actions.",
   inputSchema: {
     type: "object" as const,
     properties: {
@@ -697,20 +697,20 @@ export async function handleGetGovernanceState(args: unknown) {
   }
 
   try {
-    // 1. Read owner + pending asset from GBLIN_V5
+    // 1. Read owner + pending asset from GBLIN_V6
     const [owner, founder, proposedAsset] = await Promise.all([
       client.readContract({
-        address: GBLIN_V5,
+        address: GBLIN_V6,
         abi: GBLIN_ABI,
         functionName: "owner",
       }),
       client.readContract({
-        address: GBLIN_V5,
+        address: GBLIN_V6,
         abi: GBLIN_ABI,
         functionName: "founderWallet",
       }),
       client.readContract({
-        address: GBLIN_V5,
+        address: GBLIN_V6,
         abi: GBLIN_ABI,
         functionName: "proposedAsset",
       }),
@@ -763,7 +763,7 @@ export async function handleGetGovernanceState(args: unknown) {
       // so getRoleMemberCount is unavailable. Use hasRole on known addresses instead.
       const ZERO = "0x0000000000000000000000000000000000000000" as const;
       const founderAddr = await client.readContract({
-        address: GBLIN_V5,
+        address: GBLIN_V6,
         abi: GBLIN_ABI,
         functionName: "founderWallet",
       });
@@ -889,7 +889,7 @@ export async function handleGetGovernanceState(args: unknown) {
       }
     }
 
-    // 4. Pending asset proposal inside GBLIN_V5 itself (separate 48h mini-timelock)
+    // 4. Pending asset proposal inside GBLIN_V6 itself (separate 48h mini-timelock)
     const [pToken, pOracle, pPoolFee, pIsStable, pBaseWeight, pExecuteAfter] =
       proposedAsset;
     const hasPendingAsset = pExecuteAfter > 0n;
@@ -910,7 +910,7 @@ export async function handleGetGovernanceState(args: unknown) {
       : null;
 
     return toolResult({
-      gblin_v5: GBLIN_V5,
+      gblin_v6: GBLIN_V6,
       owner: ownerNorm,
       owner_is_timelock: ownerIsTimelock,
       owner_is_renounced: ownerIsRenounced,
@@ -924,7 +924,7 @@ export async function handleGetGovernanceState(args: unknown) {
       pending_asset_proposal: pendingAssetProposal,
       pending_timelock_operation: operationStatus,
       verification: {
-        gblin_v5_basescan: `https://basescan.org/address/${GBLIN_V5}#readContract`,
+        gblin_v6_basescan: `https://basescan.org/address/${GBLIN_V6}#readContract`,
         timelock_basescan: `https://basescan.org/address/${GBLIN_TIMELOCK}#readContract`,
         ownership_transfer_tx:
           "https://basescan.org/tx/0xb653f54ffa9b1764b41932e6a411077e7e34550605303f15d90900de682edaaf",
@@ -1035,7 +1035,7 @@ async function handleShareSkillWithPeer(args: unknown): Promise<ReturnType<typeo
         "find_keeper_bounty",
       ],
       chain: "Base mainnet (8453)",
-      contract: "0x38DcDB3A381677239BBc652aed9811F2f8496345",
+      contract: GBLIN_V6,
       timelock: "0x6aBeC8716fFeEcf7C3D6e68255b4797113E8e5Dd",
     },
     example_transaction: {
@@ -1045,8 +1045,8 @@ async function handleShareSkillWithPeer(args: unknown): Promise<ReturnType<typeo
       amount_usdc: example_amount_usdc,
       steps: [
         "1. Call quote_safe_swap with action=buy and the desired USDC amount",
-        "2. Call invest_usdc_to_gblin to receive 4-step unsigned calldata (approve USDC → swap USDC→WETH → approve WETH → buy GBLIN)",
-        "3. Sign and broadcast the 4 transactions atomically via send_calls (Base MCP) or individually",
+        "2. Call invest_usdc_to_gblin to receive 2-step unsigned calldata (approve USDC → buyGBLINInKind: direct in-kind buy on V6, no swap)",
+        "3. Sign and broadcast the 2 transactions atomically via send_calls (Base MCP) or individually",
         "4. When liquidity is needed, call swap_gblin_to_usdc_jit for atomic GBLIN→USDC redemption",
       ],
       verified_on_mainnet: true,

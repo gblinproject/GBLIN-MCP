@@ -1,14 +1,14 @@
 /**
  * GBLIN MCP — Contract ABIs
  *
- * Verified directly against GBLIN_V5.sol source on Base mainnet.
+ * Verified directly against GBLIN_V6.sol source on Base mainnet.
  * The basket() return signature exactly matches the Asset struct field order.
  */
 
 import { parseAbi } from "viem";
 
 /**
- * GBLIN_V5 selected functions.
+ * GBLIN_V6 selected functions.
  *
  * IMPORTANT — basket() returns the Asset struct in declaration order:
  *   (token, oracle, poolFee, isStable, baseWeight, dynamicWeight, peakPrice, lastPeakUpdate)
@@ -40,7 +40,6 @@ export const GBLIN_ABI = parseAbi([
   // Mutating — only used to build calldata (never executed by the MCP server)
   "function buyGBLIN(uint256 minGblinOut) payable",
   "function sellGBLINForEth(uint256 gblinAmount, uint256 minEthOut)",
-  "function sellGBLINForToken(uint256 gblinAmount, address targetToken, uint24 wethToTargetFee, uint256 minTokenOut)",
   "function buyGBLINWithToken(bytes path, uint256 amountIn, uint256 minWethOut, uint256 minGblinOut)",
   // V6: direct single-asset in-kind buy (deposit USDC directly, no swap)
   "function buyGBLINInKind(address token, uint256 amountIn, uint256 minGblinOut)",

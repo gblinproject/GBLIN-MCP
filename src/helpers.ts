@@ -21,7 +21,7 @@ import {
   BPS_DENOMINATOR,
   COOLDOWN_SECONDS,
   ETH_USD_FEED,
-  GBLIN_V5,
+  GBLIN_V6,
   NAV_CACHE_TTL_MS,
   ORACLE_STALENESS_SECONDS,
   SLIPPAGE_CRASH_SHIELD_BPS,
@@ -82,7 +82,7 @@ export async function getNavUsd(): Promise<number> {
 
   const [ethPerGblinWei, ethPriceUsd] = await Promise.all([
     client.readContract({
-      address: GBLIN_V5,
+      address: GBLIN_V6,
       abi: GBLIN_ABI,
       functionName: "quoteSellGBLIN",
       args: [parseUnits("1", 18)],
@@ -142,7 +142,7 @@ export async function getBasketState(): Promise<BasketState> {
   for (let i = 0; i < 8; i++) {
     try {
       const raw = await client.readContract({
-        address: GBLIN_V5,
+        address: GBLIN_V6,
         abi: GBLIN_ABI,
         functionName: "basket",
         args: [BigInt(i)],
@@ -232,7 +232,7 @@ export interface CooldownStatus {
 export async function checkCooldown(wallet: Address): Promise<CooldownStatus> {
   const [lastDeposit, blockTimestamp] = await Promise.all([
     client.readContract({
-      address: GBLIN_V5,
+      address: GBLIN_V6,
       abi: GBLIN_ABI,
       functionName: "lastDepositTime",
       args: [wallet],
@@ -260,7 +260,7 @@ export async function checkCooldown(wallet: Address): Promise<CooldownStatus> {
 
 /**
  * Given a USD target (e.g. "$5 needed for x402 payment"), compute how much
- * GBLIN must be sold via sellGBLINForToken to receive that USD amount, with
+ * GBLIN must be sold via sellGBLINForEth, then swapped WETH->USDC on Uniswap, to receive that USD amount, with
  * the dynamic slippage buffer baked in (so the call won't revert).
  *
  * Approach (no Quoter dependency in v0.1):
@@ -336,7 +336,7 @@ export interface WalletBalances {
 export async function getWalletBalances(wallet: Address): Promise<WalletBalances> {
   const [gblin, usdc, eth, navUsd, ethPriceUsd] = await Promise.all([
     client.readContract({
-      address: GBLIN_V5,
+      address: GBLIN_V6,
       abi: GBLIN_ABI,
       functionName: "balanceOf",
       args: [wallet],
