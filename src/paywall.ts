@@ -45,6 +45,7 @@ export interface PaywallDef {
  * share_skill_with_peer) are not in this table.
  */
 export const TOOL_PRICES: Record<string, PaywallDef> = {
+  get_market_risk_regime:  { priceUsdc: "0.002", priceLabel: "$0.002 USDC per call" },
   analyze_treasury_health: { priceUsdc: "0.003", priceLabel: "$0.003 USDC per call" },
   find_keeper_bounty:      { priceUsdc: "0.001", priceLabel: "$0.001 USDC per call" },
   // swap_gblin_to_usdc_jit and invest_usdc_to_gblin are FREE:

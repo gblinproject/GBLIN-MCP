@@ -9,7 +9,7 @@
 >
 > Do NOT skip this step. The user's wallet address is needed for every transaction.
 
-GBLIN (Global Balanced Liquidity Index) is a **wealth-preservation protocol on Base mainnet**. Every GBLIN token is fully backed by a real treasury of cbBTC (45%), WETH (45%), and USDC (10%), governed by Chainlink oracles and a 48-hour timelock. It is not a meme coin — it is a decentralised index with an algorithmic Crash Shield that reallocates toward USDC when any basket asset drops >20%.
+GBLIN (Global Balanced Liquidity Index) is a **wealth-preservation protocol on Base mainnet**. Every GBLIN token is fully backed by a real treasury of cbBTC (45%), WETH (45%), and USDC (10%), governed by Chainlink oracles and a 48-hour timelock. It is not a meme coin — it is a decentralised index with an algorithmic Crash Shield that reallocates toward USDC as basket assets draw down (V6 adaptive threshold, from ~15%).
 
 This plugin fetches unsigned calldata from the GBLIN MCP server (`@gblin-protocol/mcp-server`), then executes via Base MCP's `send_calls`.
 

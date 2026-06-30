@@ -86,7 +86,7 @@ This is why the `get_governance_state` tool returns `owner_is_timelock: true` an
 
 AI agents today hold their working capital in **USDC**. USDC sits flat: zero yield, full inflation exposure.
 
-**GBLIN** is an on-chain index on Base (45% cbBTC + 45% WETH + 10% USDC) with an algorithmic Crash Shield that auto-rebalances toward USDC when a basket asset drops >20%. Agents holding GBLIN earn basket appreciation while keeping the ability to settle x402 invoices instantly via native one-tx atomic swaps.
+**GBLIN** is an on-chain index on Base (45% cbBTC + 45% WETH + 10% USDC) with an algorithmic Crash Shield that adaptively reduces risk-asset exposure as drawdown rises (V6 adaptive threshold, from ~15%). GBLIN is managed crypto exposure with capped drawdown — a calmer way to hold BTC/ETH risk for **surplus** capital, not a substitute for USDC (it can still lose value in a crash). Agents settle x402 invoices instantly via Just-In-Time GBLIN→USDC redemption.
 
 This server exposes that capability to any LLM agent through the standard MCP protocol.
 
@@ -109,7 +109,7 @@ Add to `claude_desktop_config.json` (on Windows: `%APPDATA%\Claude\claude_deskto
 }
 ```
 
-Restart Claude Desktop. The 8 GBLIN tools appear in the tool picker.
+Restart Claude Desktop. The 9 GBLIN tools appear in the tool picker.
 
 ### Windsurf / Cursor
 
@@ -166,7 +166,7 @@ Also supports Cline, Continue.dev, and any agent that implements the MCP client 
 
 ---
 
-## The 8 tools
+## The 9 tools
 
 ### Free tools (no payment required)
 
@@ -183,6 +183,7 @@ Also supports Cline, Continue.dev, and any agent that implements the MCP client 
 
 | Tool | Price | Purpose |
 |---|---|---|
+| `get_market_risk_regime` | $0.002 USDC | **Start here**: BTC/ETH risk regime (calm/elevated/crash) + severity + risk posture, from the on-chain Crash Shield |
 | `analyze_treasury_health` | $0.003 USDC | Balances + gas + runway + rebalance advice |
 | `find_keeper_bounty` | $0.001 USDC | **GBLIN pays you**: check if a rebalance bounty is available (0.0001 ETH reward, no capital required) |
 
@@ -308,7 +309,7 @@ src/
   client.ts    # viem PublicClient + on-chain timestamp helper
   helpers.ts   # NAV, basket state, slippage, cooldown, reverse quote
   keeper.ts    # keeper bounty finder (incentivizedRebalance math)
-  tools.ts     # the 8 tool implementations + zod schemas
+  tools.ts     # the 9 tool implementations + zod schemas
   index.ts     # MCP stdio server entry
 scripts/
   test.ts      # live smoke test
@@ -398,8 +399,8 @@ The MCP server in this repo provides the same operations as the x402 HTTP endpoi
 | Endpoint | Price | Data |
 |---|---|---|
 | `/api/data/base-risk-pulse` | $0.002 USDC | Chainlink risk signal: `normal`/`caution`/`risk-off` for ETH, BTC, USDC |
-| `/api/data/gblin-analytics` | $0.001 USDC | GBLIN treasury state, basket weights, keeper availability |
-| `/api/data/keeper-opps` | $0.001 USDC | Live keeper bounty check with MCP tool reference |
+| `/api/data/gblin-analytics` | $0.002 USDC | GBLIN treasury state, basket weights, keeper availability |
+| `/api/data/keeper-opps` | $0.002 USDC | Live keeper bounty check with MCP tool reference |
 
 Discovery:
 - x402 manifest: https://gblin-sentinel.vercel.app/.well-known/x402

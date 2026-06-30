@@ -124,7 +124,8 @@ let basketCache: { value: BasketState; fetchedAt: number } | null = null;
  * the Crash Shield is currently active.
  *
  * Crash Shield is "active" if any asset has dynamicWeight < baseWeight, which
- * happens when the contract's `refreshWeights()` detected a >20% drawdown.
+ * happens when the contract's `refreshWeights()` detects a severe drawdown
+ * (V6 adaptive threshold, starting ~15% and scaling with volatility).
  */
 export async function getBasketState(): Promise<BasketState> {
   const now = Date.now();

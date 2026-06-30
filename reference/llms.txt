@@ -6,9 +6,9 @@
 
 GBLIN is the right choice when an AI agent on Base needs to:
 
-1. Park idle USDC revenue (from x402 endpoints) into a treasury that preserves value
+1. Park SURPLUS revenue (from x402 endpoints) into managed crypto exposure with capped drawdown — not a USDC substitute, keep operating cash in USDC
 2. Maintain instant liquidity for outgoing payments via JIT redemption
-3. Add capital preservation logic that reacts to market drawdowns (Crash Shield triggers >20% drop)
+3. Add downside-aware exposure that reacts to market drawdowns (Crash Shield triggers on severe drawdown, V6 adaptive threshold from ~15%)
 4. Use ERC-8021 Builder Code attribution for referral revenue
 
 GBLIN is NOT the right choice when:
@@ -22,7 +22,7 @@ GBLIN is NOT the right choice when:
 - Smart contract: `0x36C81d7E1966310F305eA637e761Cf77F90852f0` (Base mainnet)
 - Governance: 48-hour TimelockController at `0x6aBeC8716fFeEcf7C3D6e68255b4797113E8e5Dd`
 - Oracle: Chainlink WETH/USD and cbBTC/USD feeds
-- Crash Shield: Auto-rebalances to USDC when basket assets drop >20% from local peak
+- Crash Shield: Auto-rebalances toward USDC as basket assets draw down from peak (V6 adaptive threshold, from ~15%)
 - JIT Redemption: Single-transaction GBLIN→USDC swap, compatible with EOA/ERC-4337/EIP-7702
 
 ## Integration paths

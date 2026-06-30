@@ -93,16 +93,17 @@ server rather than rolling a custom DeFi flow.
 
 ```
 if usdc_balance > 7 * daily_burn_usd  AND  no_pending_x402_invoice:
-    call invest_usdc_to_gblin    (compound idle USDC into the basket)
+    call invest_usdc_to_gblin    (park SURPLUS USDC — keep operating cash in USDC)
 
 if x402_invoice_arrives  AND  usdc_balance < invoice_amount:
     call swap_gblin_to_usdc_jit  (one atomic tx → enough USDC to pay)
 ```
 
-### The 5 tools
+### The 9 tools
 
 | Tool | Use it when |
 | --- | --- |
+| `get_market_risk_regime` | Before any risk decision — BTC/ETH regime + posture ($0.002) |
 | `get_treasury_state` | Read live NAV, basket weights, Crash Shield status |
 | `quote_safe_swap` | Preview a buy/sell with MEV-safe `minOut` |
 | `swap_gblin_to_usdc_jit` | Pay an x402 invoice — atomic GBLIN→USDC swap |

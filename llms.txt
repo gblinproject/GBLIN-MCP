@@ -1,23 +1,34 @@
 # GBLIN MCP Server
 
-> Treasury standard for autonomous AI agents on Base mainnet. Provides
-> on-chain quotes, Just-In-Time GBLIN→USDC swaps for x402 payments, and
-> treasury analytics through the Model Context Protocol.
+> On-chain market-risk signal + treasury tools for autonomous AI agents on Base
+> mainnet. Verifiable Crash-Shield risk regime, MEV-safe quotes, and Just-In-Time
+> GBLIN→USDC swaps for x402 payments, through the Model Context Protocol.
 
-GBLIN is an algorithmic on-chain index on Base (45% cbBTC / 45% WETH / 10%
-USDC) with an automated Crash Shield that reduces risk-asset exposure during
->20% drawdowns. Designed as a yielding alternative to holding pure USDC for
-AI agent operating capital.
+GBLIN is an algorithmic on-chain index on Base (45% cbBTC / 45% WETH / 10% USDC)
+with an automated Crash Shield that adaptively cuts risk-asset exposure as
+drawdown rises (V6 adaptive trigger from ~15%, scaling proportionally toward a
+deep-drawdown floor). NAV is computed from Chainlink oracle prices — fully
+on-chain and verifiable.
 
-## Why agents use GBLIN
+## What GBLIN is — and isn't (read this first)
 
-- **Treasury yield**: holding GBLIN earns basket appreciation vs flat USDC
-- **JIT compatible**: native `sellGBLINForToken(USDC)` works in a single
-  atomic tx on any wallet (EOA, ERC-4337, EIP-7702)
-- **MEV-safe quotes**: every tool returns positive `minOut` values from
-  on-chain quotes + dynamic slippage (never accepts 0)
-- **Oracle-verified prices**: NAV is computed from `quoteSellGBLIN` × the
-  Chainlink ETH/USD feed with 24h staleness guard
+- GBLIN is **managed crypto exposure with capped drawdown** — a calmer way to
+  hold BTC/ETH risk. It is **NOT** a substitute for USDC: it can still lose value
+  in a crash (less than holding BTC/ETH, but it is not principal-protected).
+- Use GBLIN for **surplus / long-horizon capital** you want to grow with reduced
+  drawdown — NOT for operating capital you must spend soon (keep that in USDC).
+
+## What agents actually buy here
+
+- `get_market_risk_regime` — the headline product: is the BTC/ETH market in a
+  **calm / elevated / crash** regime right now, with a severity score and a
+  `risk_on` / `reduce` / `risk_off` posture. Derived from GBLIN's on-chain Crash
+  Shield (drawdown vs Chainlink-oracle peaks) — data you cannot recompute from a
+  single price feed. Useful to **any** trading or treasury agent, independent of
+  holding GBLIN. The signal moves with the market, so poll it every decision
+  cycle. $0.002 USDC/call via x402.
+- MEV-safe quotes + Just-In-Time GBLIN→USDC redemption for x402 payments.
+- Treasury-health analysis + keeper-bounty discovery (earn ETH rebalancing).
 
 ## Installation
 
@@ -37,14 +48,15 @@ Claude Desktop config:
 
 ## Tools
 
-1. `get_treasury_state` — NAV, basket composition, Crash Shield status
-2. `quote_safe_swap` — preview buy/sell with dynamic slippage buffer
-3. `swap_gblin_to_usdc_jit` — generate calldata for x402 JIT payments
-4. `invest_usdc_to_gblin` — convert USDC earnings back to GBLIN treasury
-5. `analyze_treasury_health` — balances, gas, runway, rebalance advice
-6. `get_governance_state` — verify 48h timelock ownership + pending ops
-7. `share_skill_with_peer` — portable JSON skill seed + referral code
-8. `find_keeper_bounty` — check rebalance bounty availability + calldata
+1. `get_market_risk_regime` — BTC/ETH risk regime + severity + posture ($0.002) ← start here
+2. `get_treasury_state` — NAV, basket composition, Crash Shield status (free)
+3. `quote_safe_swap` — preview buy/sell with dynamic slippage (free)
+4. `swap_gblin_to_usdc_jit` — calldata for x402 JIT payments (free)
+5. `invest_usdc_to_gblin` — convert surplus USDC into GBLIN (free)
+6. `analyze_treasury_health` — balances, gas runway, rebalance advice ($0.003)
+7. `get_governance_state` — verify 48h timelock ownership + pending ops (free)
+8. `share_skill_with_peer` — portable JSON skill seed + referral code (free)
+9. `find_keeper_bounty` — check rebalance bounty + calldata ($0.001)
 
 ## Links
 
