@@ -54,15 +54,15 @@ export const ETH_USD_FEED: Address = "0x71041dddad3595F9CEd3DcCFBe3D1F4b0a16Bb70
 
 // ─── Risk Attestation ────────────────────────────────────────────────────────
 // GBLIN's published attestor address — the EOA that EIP-712-signs Risk
-// Attestations served by https://gblin.digital/api/x402/attestation.
-// Set GBLIN_ATTESTOR_ADDRESS once the attestor keypair is generated + published.
-// Until then, verify_risk_attestation still enforces integrity + freshness; only
-// the "is this GBLIN's official signer?" comparison is deferred.
+// Attestations served by https://gblin.digital/api/x402/attestation. This key
+// only signs off-chain messages: it never holds funds and never sends txs.
+// Agents treat this as the trusted signer when verifying attestations via
+// verify_risk_attestation. Override with GBLIN_ATTESTOR_ADDRESS to rotate it.
 const _attestorEnv = process.env.GBLIN_ATTESTOR_ADDRESS;
 export const GBLIN_ATTESTOR: Address =
   _attestorEnv && /^0x[0-9a-fA-F]{40}$/.test(_attestorEnv)
     ? (_attestorEnv as Address)
-    : "0x0000000000000000000000000000000000000000";
+    : "0x3ae65d36e8b1d82B0B80669E769A3dc300D543e4";
 
 // Uniswap V3 pool fee tier for the WETH->USDC leg of the JIT redemption
 export const WETH_USDC_POOL_FEE = 500; // 0.05%
