@@ -1,0 +1,80 @@
+---
+name: risk-attestation
+description: Use when an AI agent needs verifiable PROOF that it checked market risk before moving capital, or needs to verify such a proof from a counterparty/peer agent. Covers GBLIN Risk Attestations — perishable (10-minute), EIP-712-verifiable snapshots of the on-chain BTC/ETH risk regime that an agent mints, attaches to its action as proof-of-diligence, and that any counterparty verifies in one step (for free). Use it to gate trust-sensitive actions on a fresh, independent risk check.
+---
+
+# GBLIN Risk Attestation (proof-of-diligence for autonomous agents)
+
+## When this skill applies
+
+Trigger when:
+- An agent is about to move meaningful capital and wants a *verifiable record* that it checked market risk first (audit trail, operator policy, insurance, compliance).
+- A workflow, vault, or counterparty **requires** proof that the agent is not acting into a crashing market.
+- An agent receives an action from a *peer agent* that claims "I already checked risk" and needs to verify that claim before trusting it.
+- You want a risk signal that is **independent** and **cannot be silently faked** — anyone can verify it without trusting the agent that produced it.
+
+If you only need the raw signal for your own private decision (no proof needed), use the cheaper `get_market_risk_regime` tool or the `crash-shield-risk-management` skill instead.
+
+## What a Risk Attestation is
+
+A signed, perishable snapshot of the current market-risk regime derived from GBLIN's on-chain Crash Shield (drawdown-driven weight cuts vs Chainlink-oracle peaks on Base mainnet). Each attestation contains:
+
+- `regime` — `calm` | `elevated` | `crash`
+- `risk_posture` — `risk_on` | `reduce` | `risk_off`
+- `severity_bps` — how deep the drawdown-driven weight cut is
+- `defensive_cash_bps` — the defensive (USDC) allocation
+- `block_number`, `issued_at`, `expires_at` — a hard **10-minute** validity window
+- `basket_hash` — binds the attestation to the exact on-chain weights it summarizes
+- `attestation_id` — the EIP-712 digest (recomputable by anyone → tamper-evident)
+- `signature` + `attestor` — present when GBLIN's attestor key is configured (one-step `ecrecover` verification)
+
+Because it **expires in 10 minutes**, an action gated on a *fresh* attestation forces a new check every cycle. That is the point: it is a live proof, not a stale rubber stamp.
+
+## Minting one (paid, ~$0.003 USDC)
+
+```
+GET https://gblin.digital/api/x402/attestation
+```
+
+This is an x402 endpoint on Base mainnet. Flow:
+1. Call without payment → receive HTTP 402 with payment requirements (USDC on Base, chain id 8453).
+2. Pay via your x402 client (`@x402/fetch` or `@x402/axios`).
+3. Retry with the payment header → receive the attestation object.
+
+Attach the **entire returned object** to your action (log it, include it in your tx metadata, pass it to the counterparty). Do not strip the `eip712` field — the verifier needs it.
+
+## Verifying one (free)
+
+Use the `verify_risk_attestation` MCP tool. Pass the whole attestation object. It runs four checks:
+
+1. **Integrity** — recomputes the EIP-712 `attestation_id` and detects any tampering.
+2. **Authenticity** — if a signature is present, recovers the signer and checks it is GBLIN's published attestor.
+3. **Freshness** — whether it is within its 10-minute window (using on-chain time, not local clock).
+4. **Live drift** — compares the attested regime to the *current* on-chain regime and flags if it changed since issuance.
+
+Trust the action only if `valid: true`. If `expired: true` or `still_current: false`, ask for a fresh attestation.
+
+## The gating pattern (why this compounds)
+
+If you operate a vault, an agent framework, or any service that accepts actions from other agents, **require a fresh GBLIN attestation** as an input:
+
+```
+if (!attestation) reject("attach a GBLIN risk attestation");
+const v = await verify_risk_attestation({ attestation });
+if (!v.valid || v.checks.expired) reject("stale or invalid risk attestation");
+if (attestation.attestation.regime === "crash") applyTighterLimits();
+proceed();
+```
+
+This gives every counterparty an independent, uniforgeable risk check they did not have to build — and it means every agent in the workflow mints a fresh attestation each cycle.
+
+## Honest scope
+
+The attestation proves *what the on-chain risk regime was at issuance*, verifiably. It does NOT predict the market, and it is NOT financial advice. A `calm` regime is not a guarantee; it is a transparent, tamper-evident reading an agent can be held to. GBLIN itself is managed crypto exposure with capped drawdown for surplus capital — not a USDC substitute.
+
+## Reference
+
+- Mint: `https://gblin.digital/api/x402/attestation`
+- Verify (free): `verify_risk_attestation` in `@gblin-protocol/mcp-server`
+- Machine index: `https://gblin.digital/api/x402/llms.txt`
+- Contract: `0x36C81d7E1966310F305eA637e761Cf77F90852f0` (Base mainnet, chain id 8453)

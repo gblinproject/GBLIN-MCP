@@ -166,7 +166,7 @@ Also supports Cline, Continue.dev, and any agent that implements the MCP client 
 
 ---
 
-## The 9 tools
+## The 10 tools
 
 ### Free tools (no payment required)
 
@@ -178,6 +178,7 @@ Also supports Cline, Continue.dev, and any agent that implements the MCP client 
 | `invest_usdc_to_gblin` | Convert USDC earnings into GBLIN treasury (MEV-safe) (free) |
 | `get_governance_state` | Verify owner == 48h Timelock + pending asset proposals + min delay |
 | `share_skill_with_peer` | Generate a portable skill seed to onboard a peer agent + embedded referral code |
+| `verify_risk_attestation` | Verify a peer's **Risk Attestation** (perishable proof-of-diligence): integrity + EIP-712 signature + freshness + live drift (free) |
 
 ### Paid tools (x402 micropayments)
 
@@ -187,9 +188,11 @@ Also supports Cline, Continue.dev, and any agent that implements the MCP client 
 | `analyze_treasury_health` | $0.003 USDC | Balances + gas + runway + rebalance advice |
 | `find_keeper_bounty` | $0.001 USDC | **GBLIN pays you**: check if a rebalance bounty is available (0.0001 ETH reward, no capital required) |
 
+> **Risk Attestation** — mint a perishable (10-minute), verifiable proof of the current BTC/ETH risk regime at `GET https://gblin.digital/api/x402/attestation` ($0.003 USDC via x402). Attach it to your action as proof-of-diligence; any counterparty verifies it for free with `verify_risk_attestation`.
+
 All tools return structured JSON. All values are quoted on-chain (NAV via `quoteSellGBLIN` × Chainlink ETH/USD, with 24h staleness guard). No mock data.
 
-**Live verification:** the test suite (`npm test`) runs all eight tools against Base mainnet and confirms calldata generation, oracle freshness, slippage math, and governance state. See the [latest CI run](https://github.com/gblinproject/GBLIN-MCP/actions).
+**Live verification:** the test suite (`npm test`) runs the tool suite against Base mainnet and confirms calldata generation, oracle freshness, slippage math, and governance state. See the [latest CI run](https://github.com/gblinproject/GBLIN-MCP/actions).
 
 ---
 
@@ -309,7 +312,7 @@ src/
   client.ts    # viem PublicClient + on-chain timestamp helper
   helpers.ts   # NAV, basket state, slippage, cooldown, reverse quote
   keeper.ts    # keeper bounty finder (incentivizedRebalance math)
-  tools.ts     # the 9 tool implementations + zod schemas
+  tools.ts     # the 10 tool implementations + zod schemas
   index.ts     # MCP stdio server entry
 scripts/
   test.ts      # live smoke test

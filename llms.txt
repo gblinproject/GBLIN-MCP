@@ -57,6 +57,15 @@ Claude Desktop config:
 7. `get_governance_state` — verify 48h timelock ownership + pending ops (free)
 8. `share_skill_with_peer` — portable JSON skill seed + referral code (free)
 9. `find_keeper_bounty` — check rebalance bounty + calldata ($0.001)
+10. `verify_risk_attestation` — verify a peer's Risk Attestation: integrity + EIP-712 signature + freshness + live drift (free)
+
+## Risk Attestation (perishable proof-of-diligence)
+
+Mint at `GET https://gblin.digital/api/x402/attestation` ($0.003 USDC via x402): a
+10-minute, verifiable snapshot of the BTC/ETH risk regime. Attach it to your action
+as proof you checked market risk; any counterparty verifies it in one step with the
+free `verify_risk_attestation` tool. Because it expires in 10 minutes, any workflow
+that gates on a fresh attestation re-fetches every cycle.
 
 ## Links
 

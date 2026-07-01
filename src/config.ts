@@ -52,6 +52,18 @@ export const EXPECTED_MIN_DELAY_SECONDS = 172_800n; // 48 hours
 // Chainlink ETH/USD price feed on Base
 export const ETH_USD_FEED: Address = "0x71041dddad3595F9CEd3DcCFBe3D1F4b0a16Bb70";
 
+// ─── Risk Attestation ────────────────────────────────────────────────────────
+// GBLIN's published attestor address — the EOA that EIP-712-signs Risk
+// Attestations served by https://gblin.digital/api/x402/attestation.
+// Set GBLIN_ATTESTOR_ADDRESS once the attestor keypair is generated + published.
+// Until then, verify_risk_attestation still enforces integrity + freshness; only
+// the "is this GBLIN's official signer?" comparison is deferred.
+const _attestorEnv = process.env.GBLIN_ATTESTOR_ADDRESS;
+export const GBLIN_ATTESTOR: Address =
+  _attestorEnv && /^0x[0-9a-fA-F]{40}$/.test(_attestorEnv)
+    ? (_attestorEnv as Address)
+    : "0x0000000000000000000000000000000000000000";
+
 // Uniswap V3 pool fee tier for the WETH->USDC leg of the JIT redemption
 export const WETH_USDC_POOL_FEE = 500; // 0.05%
 

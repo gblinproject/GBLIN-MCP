@@ -42,7 +42,11 @@ export interface PaywallDef {
 /**
  * Tool pricing.
  * Free tools (get_treasury_state, quote_safe_swap, get_governance_state,
- * share_skill_with_peer) are not in this table.
+ * share_skill_with_peer, verify_risk_attestation) are not in this table.
+ *
+ * Note: verify_risk_attestation is deliberately FREE — verifying a peer's
+ * attestation exposes that agent to GBLIN and drives PAID calls to the
+ * /api/x402/attestation minting endpoint on the webapp (adoption flywheel).
  */
 export const TOOL_PRICES: Record<string, PaywallDef> = {
   get_market_risk_regime:  { priceUsdc: "0.002", priceLabel: "$0.002 USDC per call" },

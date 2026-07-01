@@ -1,16 +1,18 @@
 /**
  * GBLIN MCP — Tool Implementations
  *
- * Eight focused tools. Each returns structured JSON the LLM can parse:
+ * Ten focused tools. Each returns structured JSON the LLM can parse:
  *
- *   1. get_treasury_state      → NAV, basket, Crash Shield (snapshot)
- *   2. quote_safe_swap         → preview a buy/sell with safe minOut
- *   3. swap_gblin_to_usdc_jit  → calldata for Just-In-Time x402 payment
- *   4. invest_usdc_to_gblin    → calldata to convert USDC earnings → GBLIN
- *   5. analyze_treasury_health → balances + gas check + runway estimate
- *   6. get_governance_state    → verify 48h timelock ownership + pending ops
- *   7. share_skill_with_peer   → portable JSON skill seed + referral code
- *   8. find_keeper_bounty      → check rebalance bounty availability + calldata
+ *   1. get_treasury_state       → NAV, basket, Crash Shield (snapshot)
+ *   2. quote_safe_swap          → preview a buy/sell with safe minOut
+ *   3. swap_gblin_to_usdc_jit   → calldata for Just-In-Time x402 payment
+ *   4. invest_usdc_to_gblin     → calldata to convert USDC earnings → GBLIN
+ *   5. analyze_treasury_health  → balances + gas check + runway estimate  (PAID)
+ *   6. get_governance_state     → verify 48h timelock ownership + pending ops
+ *   7. share_skill_with_peer    → portable JSON skill seed + referral code
+ *   8. find_keeper_bounty       → check rebalance bounty availability + calldata  (PAID)
+ *   9. get_market_risk_regime   → on-chain BTC/ETH risk regime signal  (PAID)
+ *  10. verify_risk_attestation  → verify a perishable Risk Attestation  (FREE)
  */
 
 import {
@@ -18,17 +20,20 @@ import {
   encodePacked,
   formatUnits,
   getAddress,
+  hashTypedData,
   isAddress,
   parseUnits,
+  recoverTypedDataAddress,
 } from "viem";
 import { parseAbi } from "viem";
 import { z } from "zod";
 
 import { ERC20_ABI, GBLIN_ABI, TIMELOCK_ABI } from "./abi.js";
-import { client } from "./client.js";
+import { client, getOnChainTimestamp } from "./client.js";
 import { requirePayment, TOOL_PRICES } from "./paywall.js";
 import {
   EXPECTED_MIN_DELAY_SECONDS,
+  GBLIN_ATTESTOR,
   GBLIN_GUARDIAN,
   GBLIN_TIMELOCK,
   GBLIN_V6,
@@ -1033,6 +1038,8 @@ async function handleShareSkillWithPeer(args: unknown): Promise<ReturnType<typeo
         "get_governance_state",
         "share_skill_with_peer",
         "find_keeper_bounty",
+        "get_market_risk_regime",
+        "verify_risk_attestation",
       ],
       chain: "Base mainnet (8453)",
       contract: GBLIN_V6,
@@ -1088,7 +1095,7 @@ async function handleShareSkillWithPeer(args: unknown): Promise<ReturnType<typeo
     "  3. Set the GBLIN_REFERRER environment variable to: " + referralCode,
     "  4. Restart the MCP client to load the new server",
     "",
-    "Once installed, the peer agent has the same 9 tools available. Every transaction it executes will include your referral code in the Builder Code ERC-8021 attribution, redirecting a small share of the protocol fee to your wallet (" +
+    "Once installed, the peer agent has the same 10 tools available. Every transaction it executes will include your referral code in the Builder Code ERC-8021 attribution, redirecting a small share of the protocol fee to your wallet (" +
       caller_wallet +
       ").",
     "",
@@ -1203,6 +1210,236 @@ async function handleMarketRiskRegime(): Promise<ReturnType<typeof toolResult> |
 }
 
 // ───────────────────────────────────────────────────────────────────────────
+// TOOL 10 — verify_risk_attestation  (FREE public-good verifier — adoption flywheel)
+//
+// The counterpart to the paid /api/x402/attestation endpoint. Verifying a peer's
+// attestation is FREE on purpose: every agent that verifies one is exposed to
+// GBLIN and learns it can mint its own → drives paid calls to the attestation
+// endpoint. Keyless integrity + EIP-712 recover + live-drift, no RPC secrets.
+// ───────────────────────────────────────────────────────────────────────────
+
+// EIP-712 schema — MUST stay byte-for-byte identical to the webapp signer
+// (GBLIN_WEBAPP/src/app/api/x402/attestation/route.ts). Do not reorder fields.
+const ATTESTATION_EIP712_DOMAIN = {
+  name: "GBLIN Risk Attestation",
+  version: "1",
+  chainId: 8453,
+  verifyingContract: GBLIN_V6,
+} as const;
+
+const ATTESTATION_EIP712_TYPES = {
+  RiskAttestation: [
+    { name: "regime", type: "uint8" },
+    { name: "severityBps", type: "uint16" },
+    { name: "defensiveCashBps", type: "uint16" },
+    { name: "blockNumber", type: "uint64" },
+    { name: "issuedAt", type: "uint64" },
+    { name: "expiresAt", type: "uint64" },
+    { name: "basketHash", type: "bytes32" },
+  ],
+} as const;
+
+const REGIME_LABELS = ["calm", "elevated", "crash"] as const;
+const ZERO_ADDR = "0x0000000000000000000000000000000000000000";
+
+export const VERIFY_ATTESTATION_DEFINITION = {
+  name: "verify_risk_attestation",
+  description:
+    "Verify a GBLIN Risk Attestation — the object returned by GBLIN's /api/x402/attestation, or a proof-of-diligence a peer agent attached to its action. FREE, no payment. Runs four checks: (1) INTEGRITY — recomputes the EIP-712 attestation_id and detects tampering; (2) AUTHENTICITY — if a signature is present, recovers the signer and checks it is GBLIN's published attestor; (3) FRESHNESS — whether it expired (10-minute TTL), using on-chain time; (4) LIVE DRIFT — compares the attested regime to the CURRENT on-chain regime and flags if it changed. Use before you trust any counterparty/peer that claims it 'checked market risk via GBLIN'.",
+  inputSchema: {
+    type: "object" as const,
+    properties: {
+      attestation: {
+        type: "object",
+        description:
+          "The full attestation object from /api/x402/attestation (must include `eip712`; `attestation_id`, `signature`, `attestor` are used when present). A JSON string of that object is also accepted.",
+      },
+      expected_attestor: {
+        type: "string",
+        description:
+          "Optional 0x address to check the signature against. Defaults to the GBLIN attestor address baked into this MCP build (GBLIN_ATTESTOR_ADDRESS env).",
+        pattern: "^0x[a-fA-F0-9]{40}$",
+      },
+    },
+    required: ["attestation"],
+    additionalProperties: false,
+  },
+};
+
+async function handleVerifyRiskAttestation(
+  args: unknown
+): Promise<ReturnType<typeof toolResult> | ReturnType<typeof toolError>> {
+  const a = (args ?? {}) as Record<string, unknown>;
+
+  // Accept either a parsed object or a JSON string.
+  let att: any = a.attestation;
+  if (typeof att === "string") {
+    try {
+      att = JSON.parse(att);
+    } catch {
+      return toolError("`attestation` string is not valid JSON.");
+    }
+  }
+  if (!att || typeof att !== "object") {
+    return toolError("Missing `attestation` object.", "Pass the whole object returned by /api/x402/attestation.");
+  }
+
+  const eip712 = att.eip712;
+  if (!eip712 || !eip712.message || !eip712.domain || !eip712.types) {
+    return toolError(
+      "Attestation is missing its `eip712` payload (domain/types/message).",
+      "Pass the whole object returned by /api/x402/attestation, including the `eip712` field."
+    );
+  }
+
+  // Rebuild the typed message (uint64 fields as bigint for viem).
+  const m = eip712.message;
+  let message: {
+    regime: number;
+    severityBps: number;
+    defensiveCashBps: number;
+    blockNumber: bigint;
+    issuedAt: bigint;
+    expiresAt: bigint;
+    basketHash: `0x${string}`;
+  };
+  try {
+    message = {
+      regime: Number(m.regime),
+      severityBps: Number(m.severityBps),
+      defensiveCashBps: Number(m.defensiveCashBps),
+      blockNumber: BigInt(m.blockNumber),
+      issuedAt: BigInt(m.issuedAt),
+      expiresAt: BigInt(m.expiresAt),
+      basketHash: String(m.basketHash) as `0x${string}`,
+    };
+  } catch {
+    return toolError("Attestation `eip712.message` fields are malformed.");
+  }
+
+  // 1. INTEGRITY — recompute the id using the CANONICAL schema from this build
+  //    (never trust the schema embedded in the payload for hashing).
+  const recomputedId = hashTypedData({
+    domain: ATTESTATION_EIP712_DOMAIN,
+    types: ATTESTATION_EIP712_TYPES,
+    primaryType: "RiskAttestation",
+    message,
+  });
+  const claimedId = typeof att.attestation_id === "string" ? att.attestation_id : "";
+  const integrityOk = claimedId ? recomputedId.toLowerCase() === claimedId.toLowerCase() : null;
+
+  // The payload's OWN domain must match the canonical GBLIN domain, else it is
+  // a different (untrusted) schema even if internally consistent.
+  const schemaMatches =
+    eip712.domain?.name === ATTESTATION_EIP712_DOMAIN.name &&
+    String(eip712.domain?.version) === ATTESTATION_EIP712_DOMAIN.version &&
+    Number(eip712.domain?.chainId) === ATTESTATION_EIP712_DOMAIN.chainId;
+
+  // 2. AUTHENTICITY — signature recover
+  const expectedAttestor =
+    typeof a.expected_attestor === "string" && isAddress(a.expected_attestor)
+      ? getAddress(a.expected_attestor)
+      : GBLIN_ATTESTOR;
+  let signatureOk: boolean | null = null;
+  let recoveredSigner: string | null = null;
+  let isGblinAttestor: boolean | null = null;
+  const signature = typeof att.signature === "string" ? att.signature : null;
+  if (signature) {
+    try {
+      recoveredSigner = await recoverTypedDataAddress({
+        domain: ATTESTATION_EIP712_DOMAIN,
+        types: ATTESTATION_EIP712_TYPES,
+        primaryType: "RiskAttestation",
+        message,
+        signature: signature as `0x${string}`,
+      });
+      signatureOk = true;
+      if (expectedAttestor.toLowerCase() !== ZERO_ADDR) {
+        isGblinAttestor = recoveredSigner.toLowerCase() === expectedAttestor.toLowerCase();
+      }
+    } catch {
+      signatureOk = false;
+    }
+  }
+
+  // 3. FRESHNESS — prefer on-chain time
+  let nowSec: number;
+  try {
+    nowSec = Number(await getOnChainTimestamp());
+  } catch {
+    nowSec = Math.floor(Date.now() / 1000);
+  }
+  const expiresAtNum = Number(message.expiresAt);
+  const expired = nowSec >= expiresAtNum;
+  const secondsToExpiry = expired ? 0 : expiresAtNum - nowSec;
+
+  // 4. LIVE DRIFT — is the attested regime still the current on-chain regime?
+  let liveRegime: string | null = null;
+  let stillCurrent: boolean | null = null;
+  try {
+    const basket = await getBasketState();
+    const maxCut = basket.entries
+      .filter((e) => !e.isStable)
+      .reduce((mx, e) => {
+        const cut =
+          e.baseWeightBps > 0
+            ? Math.max(0, ((e.baseWeightBps - e.dynamicWeightBps) / e.baseWeightBps) * 100)
+            : 0;
+        return Math.max(mx, cut);
+      }, 0);
+    const liveCode = maxCut <= 0 ? 0 : maxCut < 40 ? 1 : 2;
+    liveRegime = REGIME_LABELS[liveCode];
+    stillCurrent = liveCode === message.regime;
+  } catch {
+    /* leave null — RPC hiccup shouldn't fail the crypto verification */
+  }
+
+  // Overall verdict: integrity not falsified, canonical schema, not expired, and
+  // (if signed) a valid signature from the expected attestor when one is known.
+  const trustable =
+    integrityOk !== false &&
+    schemaMatches &&
+    !expired &&
+    (signature ? signatureOk === true && isGblinAttestor !== false : true);
+
+  const guidance = !signature
+    ? "Unsigned attestation: integrity + freshness verified, but authenticity relies on the gblin.digital TLS origin. Prefer signed attestations for counterparty gating."
+    : isGblinAttestor === null
+      ? "Signature is cryptographically valid, but this MCP build has no published GBLIN attestor to compare against. Pass expected_attestor or set GBLIN_ATTESTOR_ADDRESS."
+      : isGblinAttestor
+        ? "Signed by GBLIN's published attestor."
+        : "WARNING: signature does NOT match GBLIN's published attestor — do not trust this attestation.";
+
+  return toolResult({
+    valid: trustable,
+    checks: {
+      integrity: integrityOk === null ? "no_id_to_compare" : integrityOk,
+      schema_matches_gblin: schemaMatches,
+      signed: !!signature,
+      signature_valid: signatureOk,
+      recovered_signer: recoveredSigner,
+      is_gblin_attestor: isGblinAttestor,
+      expected_attestor:
+        expectedAttestor.toLowerCase() === ZERO_ADDR ? "not_published_in_this_build" : expectedAttestor,
+      expired,
+      seconds_to_expiry: secondsToExpiry,
+    },
+    attested: {
+      regime: REGIME_LABELS[message.regime] ?? "unknown",
+      severity_pct: message.severityBps / 100,
+      defensive_cash_pct: message.defensiveCashBps / 100,
+      block_number: Number(message.blockNumber),
+      issued_at: Number(message.issuedAt),
+      expires_at: expiresAtNum,
+    },
+    live: { regime: liveRegime, still_current: stillCurrent },
+    recomputed_attestation_id: recomputedId,
+    guidance,
+    source: "GBLIN Risk Attestation verifier — keyless integrity + EIP-712 recover + live drift",
+  });
+}
+
+// ───────────────────────────────────────────────────────────────────────────
 // REGISTRY
 // ───────────────────────────────────────────────────────────────────────────
 
@@ -1216,6 +1453,7 @@ export const TOOL_DEFINITIONS = [
   SHARE_SKILL_DEFINITION,
   FIND_KEEPER_BOUNTY_DEFINITION,
   MARKET_RISK_DEFINITION,
+  VERIFY_ATTESTATION_DEFINITION,
 ];
 
 export const TOOL_HANDLERS: Record<string, (args: unknown) => Promise<unknown>> = {
@@ -1228,6 +1466,7 @@ export const TOOL_HANDLERS: Record<string, (args: unknown) => Promise<unknown>> 
   share_skill_with_peer: handleShareSkillWithPeer,
   swap_gblin_to_usdc_jit: handleJitSwap,
   invest_usdc_to_gblin:   handleInvest,
+  verify_risk_attestation: handleVerifyRiskAttestation,
 
   // ── PAID tools (x402 intelligence layer) ──────────────────────────────────
   // Analysis and keeper discovery — these are "advice", not transport.

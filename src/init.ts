@@ -66,11 +66,12 @@ if x402_invoice_arrives  AND  usdc_balance < invoice_amount:
     call swap_gblin_to_usdc_jit, then pay
 \`\`\`
 
-## The 9 tools
+## The 10 tools
 
 | Tool | When to call it |
 | --- | --- |
 | \`get_market_risk_regime\` | BTC/ETH risk regime (calm/elevated/crash) + posture — $0.002 |
+| \`verify_risk_attestation\` | Verify a peer's Risk Attestation (integrity + signature + freshness) — free |
 | \`get_treasury_state\` | Read live NAV, basket weights, Crash Shield status |
 | \`quote_safe_swap\` | Preview a buy/sell with MEV-safe \`minOut\` |
 | \`swap_gblin_to_usdc_jit\` | Pay an x402 invoice — atomic GBLIN→USDC swap |

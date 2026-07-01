@@ -99,11 +99,12 @@ if x402_invoice_arrives  AND  usdc_balance < invoice_amount:
     call swap_gblin_to_usdc_jit  (one atomic tx → enough USDC to pay)
 ```
 
-### The 9 tools
+### The 10 tools
 
 | Tool | Use it when |
 | --- | --- |
 | `get_market_risk_regime` | Before any risk decision — BTC/ETH regime + posture ($0.002) |
+| `verify_risk_attestation` | Verify a peer's Risk Attestation before trusting it (free) |
 | `get_treasury_state` | Read live NAV, basket weights, Crash Shield status |
 | `quote_safe_swap` | Preview a buy/sell with MEV-safe `minOut` |
 | `swap_gblin_to_usdc_jit` | Pay an x402 invoice — atomic GBLIN→USDC swap |
