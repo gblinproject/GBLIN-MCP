@@ -215,7 +215,7 @@ npx @gblin-protocol/mcp-server analyze_treasury_health '{"wallet_address":"0x...
 # Returns: 402 error with payment details
 
 # Step 2: Pay via facilitator
-curl -X POST https://x402.org/facilitator/pay \
+curl -X POST https://facilitator.payai.network/pay \
   -H "Content-Type: application/json" \
   -d '{
     "amount": "0.003",
@@ -238,8 +238,9 @@ npx @gblin-protocol/mcp-server analyze_treasury_health \
 
 ### Supported facilitators
 
-- **Primary**: `https://x402.org/facilitator` (Coinbase-maintained reference implementation)
+- **Primary**: `https://facilitator.payai.network` (PayAI — settles on Base mainnet, no auth)
 - **Override**: Set `X402_FACILITATOR_URL` environment variable
+- **Note**: `https://x402.org/facilitator` is testnet-only under x402 v2 and cannot settle Base mainnet payments
 
 All payments are processed on **Base mainnet** using USDC (0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913).
 

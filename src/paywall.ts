@@ -14,23 +14,28 @@
  *   RECIPIENT_WALLET  — your EVM address that will receive USDC payments
  *
  * Optional env vars:
- *   X402_FACILITATOR_URL  — override facilitator (default: https://x402.org/facilitator)
+ *   X402_FACILITATOR_URL  — override facilitator
+ *                           default: https://facilitator.payai.network
+ *                           (x402.org is testnet-only under x402 v2:
+ *                           it cannot settle Base mainnet — never use it here)
  */
 
 import { z } from "zod";
 import { PACKAGE_VERSION } from "./config.js";
 
-// ─── Constants ───────────────────────────────────────────────────────────────
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 const USDC_BASE = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" as const;
+// PayAI: largest non-CDP facilitator, settles on Base mainnet, no auth.
+// (x402.org is testnet-only in x402 v2 and cannot settle eip155:8453.)
 const FACILITATOR =
-  process.env.X402_FACILITATOR_URL ?? "https://x402.org/facilitator";
+  process.env.X402_FACILITATOR_URL ?? "https://facilitator.payai.network";
 
 // Default recipient: GBLIN Protocol fee wallet.
 // Operators may override via RECIPIENT_WALLET env var.
 const DEFAULT_RECIPIENT = "0x0ebA5d314F4f5Dcb7A094953Fa9311a45172dd1B";
 
-// ─── Pricing table ───────────────────────────────────────────────────────────
+// ─── Pricing table ──────────────────────────────────────────────────────────
 
 export interface PaywallDef {
   /** USDC amount as decimal string, e.g. "0.005" */
@@ -81,7 +86,7 @@ function errorResponse(obj: unknown) {
   };
 }
 
-// ─── requirePayment ───────────────────────────────────────────────────────────
+// ─── requirePayment ─────────────────────────────────────────────────────────────
 
 /**
  * Wraps an MCP tool handler with x402 payment verification.
