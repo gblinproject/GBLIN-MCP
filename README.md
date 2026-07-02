@@ -109,7 +109,7 @@ Add to `claude_desktop_config.json` (on Windows: `%APPDATA%\Claude\claude_deskto
 }
 ```
 
-Restart Claude Desktop. The 9 GBLIN tools appear in the tool picker.
+Restart Claude Desktop. The 10 GBLIN tools appear in the tool picker.
 
 ### Windsurf / Cursor
 
@@ -309,7 +309,7 @@ Project layout:
 ```
 src/
   config.ts    # network constants, addresses, slippage params
-  abi.ts       # GBLIN_V5 + Chainlink + ERC-20 ABIs
+  abi.ts       # GBLIN_V6 + Chainlink + ERC-20 ABIs
   client.ts    # viem PublicClient + on-chain timestamp helper
   helpers.ts   # NAV, basket state, slippage, cooldown, reverse quote
   keeper.ts    # keeper bounty finder (incentivizedRebalance math)
@@ -390,6 +390,7 @@ For continuous income, poll `find_keeper_bounty` on an interval (e.g. every 5–
 
 GBLIN exposes machine-readable discovery files for AI agents and protocols:
 
+- **Coinbase x402 Bazaar:** all 11 GBLIN endpoints (7 webapp + 4 Sentinel) are indexed in the [CDP Bazaar discovery layer](https://docs.cdp.coinbase.com/x402/bazaar) — agents find them via semantic search (`GET https://api.cdp.coinbase.com/platform/v2/x402/discovery/search?query=treasury+risk`) or by merchant (`.../discovery/merchant?payTo=0x0ebA5d314F4f5Dcb7A094953Fa9311a45172dd1B`)
 - **x402 Manifest:** https://gblin.digital/.well-known/x402 — full list of paid endpoints with prices, chain ID, and currency
 - **LLM Discovery:** https://gblin.digital/api/x402/llms.txt — human-readable protocol summary (free, no paywall)
 - **Base MCP Plugin:** [PR #56 on base/skills](https://github.com/base/skills/pull/56) — official integration in review
@@ -405,6 +406,7 @@ The MCP server in this repo provides the same operations as the x402 HTTP endpoi
 | `/api/data/base-risk-pulse` | $0.002 USDC | Chainlink risk signal: `normal`/`caution`/`risk-off` for ETH, BTC, USDC |
 | `/api/data/gblin-analytics` | $0.002 USDC | GBLIN treasury state, basket weights, keeper availability |
 | `/api/data/keeper-opps` | $0.002 USDC | Live keeper bounty check with MCP tool reference |
+| `/api/data/risk-pulse-pro` | $0.03 USDC | **Flagship**: actionable recommendation (invest/hold/reduce/defer) + confidence + suggested allocation |
 
 Discovery:
 - x402 manifest: https://gblin-sentinel.vercel.app/.well-known/x402
