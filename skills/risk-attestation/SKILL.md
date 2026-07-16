@@ -68,6 +68,28 @@ proceed();
 
 This gives every counterparty an independent, uniforgeable risk check they did not have to build — and it means every agent in the workflow mints a fresh attestation each cycle.
 
+## Consumer usage record (bind how you used it — or it rots into cached confidence)
+
+A signed attestation proves the *producer* side (what the regime was, verifiably). It is only trustworthy end-to-end if the **consuming agent records how it acted on it**. Otherwise a 10-minute proof quietly turns into cached confidence: the agent keeps leaning on a reading it never re-checked. Every consumer that gates an action on an attestation SHOULD log a usage record alongside its action:
+
+```json
+{
+  "attestation_id": "0x…",          // ties this decision to the exact proof
+  "source_time": 1780686371,          // issued_at from the attestation
+  "market": "BTC,ETH",                // what the regime actually covered
+  "policy_threshold": "refuse if regime=crash; reduce size if elevated",
+  "action": "allowed",               // allowed | refused | modified
+  "action_detail": "opened 0.4 ETH position at 50% size",
+  "stale_after": 1780686971,          // = expires_at; hard validity edge
+  "rerun_on": "now>=stale_after || notional_up || market_not_covered || regime_drift",
+  "bound_to": "0x… (tx hash / job id this record justifies)"
+}
+```
+
+**Fail closed.** Past `stale_after`, or if `verify_risk_attestation` returns `still_current: false`, the record is void — re-mint before acting. Never reuse a record whose `rerun_on` condition has fired. The point of the 10-minute window is defeated the moment a consumer treats one proof as durable.
+
+`attestation_id`, `source_time` (`issued_at`), `market`, and `stale_after` (`expires_at`) come straight from the attestation. `policy_threshold`, `action`, `rerun_on`, and `bound_to` are the consumer's to fill — that binding is what makes the proof auditable after the fact. (Schema shaped by community feedback from Base builders on Farcaster.)
+
 ## Honest scope
 
 The attestation proves *what the on-chain risk regime was at issuance*, verifiably. It does NOT predict the market, and it is NOT financial advice. A `calm` regime is not a guarantee; it is a transparent, tamper-evident reading an agent can be held to. GBLIN itself is managed crypto exposure with capped drawdown for surplus capital — not a USDC substitute.
