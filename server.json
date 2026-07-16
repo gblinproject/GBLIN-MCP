@@ -1,7 +1,7 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.gblinproject/gblin-mcp-server",
-  "description": "Collateral-backed treasury vault for AI agents on Base: Crash Shield self-defends, JIT redemption pays x402 invoices.",
+  "description": "Collateral-backed treasury vault for AI agents on Base. Crash Shield defends, JIT pays x402.",
   "repository": {
     "url": "https://github.com/gblinproject/GBLIN-MCP",
     "source": "github"
