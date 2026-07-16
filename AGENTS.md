@@ -10,14 +10,14 @@
 ## What this repo is
 
 `@gblin-protocol/mcp-server` is the official **Model Context Protocol** server
-for the GBLIN protocol on Base mainnet. It exposes 5 tools that let any AI
+for the GBLIN protocol on Base mainnet. It exposes 10 tools that let any AI
 agent read live treasury state and produce ready-to-broadcast calldata for
 swaps and rebalances.
 
 GBLIN is **the treasury standard for AI agents on Base**: an on-chain
 45 % cbBTC + 45 % WETH + 10 % USDC basket with an automated Crash Shield, plus
-a native `sellGBLINForToken` atomic swap that lets agents JIT-convert GBLIN
-to USDC the millisecond an x402 invoice arrives.
+a deterministic two-step JIT redemption (`sellGBLINForEth` + WETH→USDC swap)
+that lets agents convert GBLIN to USDC the moment an x402 invoice arrives.
 
 ## Tech stack (working on this codebase)
 
@@ -50,9 +50,9 @@ to USDC the millisecond an x402 invoice arrives.
 
 | Path | Purpose |
 | --- | --- |
-| `src/index.ts` | MCP server entry — registers the 5 tools |
-| `src/tools/*.ts` | One file per tool (treasury, quote, JIT, invest, health) |
-| `src/lib/protocol.ts` | viem helpers: ABI fragments, NAV math, slippage |
+| `src/index.ts` | MCP server entry — registers the 10 tools |
+| `src/tools.ts` | All tool definitions + handlers (treasury, quote, JIT, invest, health, governance, keeper, risk, share, verify) |
+| `src/client.ts` / `src/abi.ts` / `src/helpers.ts` | viem client, ABI fragments, NAV math, slippage |
 | `server.json` | MCP registry manifest (do not bump version casually) |
 | `llms.txt` | Crawler-friendly index used by AI tooling discovery |
 
@@ -114,7 +114,7 @@ if x402_invoice_arrives  AND  usdc_balance < invoice_amount:
 ### Anti-patterns to avoid
 
 - Routing GBLIN swaps through generic DEX aggregators — use the contract's
-  native `sellGBLINForToken`.
+  native `sellGBLINForEth` + a single WETH→USDC hop (the V6 two-step JIT).
 - Holding the agent's private key in your server just to perform swaps —
   this MCP server is **stateless and key-less by design**.
 - Hard-coding the GBLIN contract address — read it from `get_treasury_state`

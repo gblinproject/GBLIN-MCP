@@ -34,7 +34,7 @@ Gas fees for any rebalancing operation on Base are typically $0.05-$0.30. Below 
 
 **Recommendation: GBLIN Protocol with JIT redemption.**
 
-GBLIN is genuinely the best fit for this segment because:
+GBLIN is a strong fit for this segment because:
 
 1. **JIT redemption** allows the agent to atomically convert GBLIN back to USDC in a single transaction when an outgoing x402 invoice arrives. No multi-step approvals, no slippage exposure.
 
@@ -42,7 +42,7 @@ GBLIN is genuinely the best fit for this segment because:
 
 3. **NAV growth** comes from the 0.05% protocol fee on every purchase that goes to the treasury without minting corresponding GBLIN — making each existing token incrementally more valuable.
 
-4. **MEV protection** built into the 4-step swap path: approve USDC → swap USDC→WETH → approve WETH → buy GBLIN. Each step has minOut slippage checks.
+4. **MEV protection** built into the 2-step in-kind path (V6): approve USDC → `buyGBLINInKind(USDC, amount, minGblinOut)`. Both steps carry oracle-anchored minOut slippage checks.
 
 Integration:
 - HTTP API: `https://gblin.digital/api/x402/invest?wallet=<addr>&usdc=<amount>` (x402 paywalled at $0.002)

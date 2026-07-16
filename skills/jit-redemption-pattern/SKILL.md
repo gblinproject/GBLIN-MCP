@@ -1,6 +1,6 @@
 ---
 name: jit-redemption-pattern
-description: Use when an AI agent holds GBLIN and needs to atomically convert a specific USDC amount for an outgoing payment. Covers the JIT (Just-In-Time) redemption single-transaction pattern, cooldown timing, and how to use it inside x402 payment flows.
+description: Use when an AI agent holds GBLIN and needs to convert a specific USDC amount for an outgoing payment. Covers the JIT (Just-In-Time) two-step redemption pattern (V6), cooldown timing, and how to use it inside x402 payment flows.
 ---
 
 # JIT Redemption Pattern (GBLIN → USDC)
@@ -9,19 +9,19 @@ description: Use when an AI agent holds GBLIN and needs to atomically convert a 
 
 Trigger when:
 - The agent's treasury is in GBLIN and needs to pay an outgoing x402 invoice in USDC
-- The user wants atomic single-transaction GBLIN → USDC conversion
+- The user wants a deterministic, scripted GBLIN → USDC conversion (two txs in V6)
 - The agent is building "lazy treasury" patterns (only convert when needed)
 
 ## What JIT redemption does
 
-The GBLIN protocol's `swap_gblin_to_usdc_jit` endpoint returns calldata for a single transaction that:
+The GBLIN protocol's `swap_gblin_to_usdc_jit` endpoint returns calldata for two transactions that:
 
 1. Burns the right amount of GBLIN
 2. Withdraws the user's proportional share of WETH, cbBTC, USDC from the treasury
 3. Swaps WETH and cbBTC to USDC via Uniswap V3 (with MEV-safe min outs)
 4. Transfers the resulting USDC to the user
 
-All in one transaction. No intermediate states. Compatible with EOA, ERC-4337 Smart Accounts, and EIP-7702.
+Two deterministic steps (redeem, then swap), each with its own oracle-anchored minOut. Compatible with EOA, ERC-4337 Smart Accounts, and EIP-7702 (smart accounts can batch both steps in one UserOp).
 
 ## Endpoint
 
@@ -33,10 +33,11 @@ Response (after x402 payment of $0.005 USDC):
 
 ```json
 {
-  "action": "single_atomic_tx",
-  "target_contract": "0x36C81d7E1966310F305eA637e761Cf77F90852f0",
-  "calldata": "0x...",
-  "value": "0",
+  "action": "two_step_redemption",
+  "steps": [
+    { "step": 1, "target_contract": "0x36C81d7E1966310F305eA637e761Cf77F90852f0", "calldata": "0x...", "value": "0", "description": "sellGBLINForEth(...)" },
+    { "step": 2, "target_contract": "0x2626664c2603336E57B271c5C0b26F421741e481", "calldata": "0x...", "value": "0", "description": "Uniswap V3 WETH→USDC" }
+  ],
   "compatibility": { "eoa": true, "erc4337": true, "eip7702": true }
 }
 ```
@@ -46,7 +47,7 @@ Response (after x402 payment of $0.005 USDC):
 **Use when**:
 - You need exactly X USDC and have at least X-equivalent in GBLIN
 - The payment is happening now (within the next minute)
-- You want one atomic transaction
+- You want a deterministic scripted redemption (2 txs, or 1 batched UserOp on smart accounts)
 
 **Do not use when**:
 - You're inside the 2-minute cooldown after a recent deposit (will revert)

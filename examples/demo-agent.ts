@@ -64,9 +64,10 @@ async function runDemoAgent() {
     },
   });
   const jit = JSON.parse((jitResult.content[0] as { text: string }).text);
-  console.log(`  Action:          ${jit.action}`);
-  console.log(`  Target contract: ${jit.target_contract}`);
-  console.log(`  Calldata:        ${jit.calldata.slice(0, 20)}...`);
+  console.log(`  Steps required: ${jit.steps.length}`);
+  jit.steps.forEach((step: { step: number; description: string }) => {
+    console.log(`  Step ${step.step}: ${step.description}`);
+  });
   console.log();
 
   // ─── Tool 4: invest_usdc_to_gblin ────────────────────────────────────────
@@ -75,6 +76,7 @@ async function runDemoAgent() {
     name: "invest_usdc_to_gblin",
     arguments: {
       usdc_amount: "10",
+      wallet_address: DEMO_WALLET,
     },
   });
   const invest = JSON.parse((investResult.content[0] as { text: string }).text);
@@ -91,9 +93,13 @@ async function runDemoAgent() {
     arguments: { wallet_address: DEMO_WALLET },
   });
   const health = JSON.parse((healthResult.content[0] as { text: string }).text);
+  if (health.error === "payment_required") {
+    console.log(`  Paid tool (${health.payment?.amount} USDC) — enable payment or MCP_PAYWALL=false to run.\n`);
+  } else {
   console.log(`  Total USD:    $${health.balances.total_usd}`);
   console.log(`  Gas health:   ${health.gas_health.status}`);
   console.log(`  Cooldown:     ${health.cooldown.active ? `active (${health.cooldown.seconds_remaining}s)` : "none"}\n`);
+  }
 
   // ─── Tool 6: get_governance_state ────────────────────────────────────────
   console.log("🏛️  [6/6] get_governance_state");

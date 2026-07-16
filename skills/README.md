@@ -26,8 +26,10 @@ Each skill is a folder with `SKILL.md` (YAML frontmatter + Markdown). At session
 | `x402-paywall-pattern` | User builds an MCP server and wants to monetize via x402 |
 | `agent-self-funding` | User builds a self-sustaining agent that earns and reinvests |
 | `crash-shield-risk-management` | User wants algorithmic risk management for agent treasury |
-| `jit-redemption-pattern` | User needs atomic GBLIN→USDC conversion for outgoing payments |
+| `jit-redemption-pattern` | User needs scripted GBLIN→USDC conversion for outgoing payments |
 | `erc8021-attribution` | User wants to add Builder Code referral attribution |
+| `earn-as-base-keeper` | User wants an agent that earns keeper bounties on Base |
+| `risk-attestation` | User wants signed, portable proof-of-diligence for agent actions |
 
 ## Install
 

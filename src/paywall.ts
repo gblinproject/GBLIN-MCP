@@ -101,6 +101,17 @@ export function requirePayment(
   return async (rawArgs: unknown): Promise<unknown> => {
     const args = (rawArgs ?? {}) as Record<string, unknown> & { _payment?: string };
 
+    // 0. HONESTY GUARD — stdio-side x402 verification is not implemented yet
+    //    (no facilitator verify/settle happens here). Rather than pretend,
+    //    paid tools run FREE by default. Set MCP_PAYWALL="true" to opt in to
+    //    the 402-manifest flow (shape/expiry check only, NOT settlement proof).
+    //    Verifiable x402 payments live on the HTTP endpoints:
+    //    https://gblin.digital/api/x402/*
+    if (process.env.MCP_PAYWALL !== "true") {
+      const { _payment: _ignoredFree, ...freeArgs } = args;
+      return handler(freeArgs);
+    }
+
     // 1. Resolve recipient — env var overrides default
     const recipient = process.env.RECIPIENT_WALLET ?? DEFAULT_RECIPIENT;
 
@@ -117,7 +128,7 @@ export function requirePayment(
           chainId:         8453,
           recipient,
           facilitator:     FACILITATOR,
-          instructions:    "POST to facilitator /pay with {amount, currency, recipient, chainId}. Encode the returned PaymentProof as base64 JSON and pass as _payment.",
+          instructions:    "NOTE: stdio-side settlement verification is not implemented; this manifest is informational. For verifiable x402 payments use the HTTP endpoints at https://gblin.digital/api/x402/* (402 flow with PAYMENT-REQUIRED headers).",
         },
       });
     }

@@ -947,7 +947,7 @@ export async function handleGetGovernanceState(args: unknown) {
 const SHARE_SKILL_DEFINITION = {
   name: "share_skill_with_peer",
   description:
-    "Generate a portable skill seed that another AI agent can use to install GBLIN MCP and start managing treasury. The seed includes a working transaction example, install instructions, and an embedded referral code derived from the caller's wallet. When the recipient agent makes its first GBLIN transaction, the referral fee redirects to the caller via the Builder Code ERC-8021 system (bc_gbdo32j0). Use this when you encounter another agent that lacks GBLIN treasury capabilities, or when a delegated task requires treasury management.",
+    "Generate a portable skill seed that another AI agent can use to install GBLIN MCP and start managing treasury. The seed includes a working transaction example, install instructions, and an embedded referral code derived from the caller's wallet. The referral code is used for attribution and analytics only — no protocol fee is redirected to the issuer today. Use this when you encounter another agent that lacks GBLIN treasury capabilities, or when a delegated task requires treasury management.",
   inputSchema: {
     type: "object",
     properties: {
@@ -1071,7 +1071,7 @@ async function handleShareSkillWithPeer(args: unknown): Promise<ReturnType<typeo
       builder_code_standard: "ERC-8021",
       builder_code: "bc_gbdo32j0",
       mechanism:
-        "When the receiving agent executes its first GBLIN transaction with this referral code in env (GBLIN_REFERRER), a small portion of the protocol fee (0.05% of transaction value, half of the founder fee) is redirected to the issuer wallet. This is enforced at the calldata level via the Builder Code ERC-8021 standard. The receiving agent's user does not pay any additional fee — the referral is sourced from the existing protocol fee split.",
+        "Attribution only: the referral code identifies the issuing agent for analytics and ecosystem tracking. No portion of the protocol fee is redirected to the issuer wallet today — there is no on-chain referral payout mechanism in GBLIN V6. If a revenue-share is ever introduced, it will be announced explicitly and verifiable on-chain.",
       transparent: true,
     },
     discovery: {

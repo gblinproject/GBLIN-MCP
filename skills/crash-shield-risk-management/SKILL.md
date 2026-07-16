@@ -15,7 +15,7 @@ Trigger when:
 
 ## What Crash Shield is
 
-GBLIN's Crash Shield is an on-chain algorithmic indicator. The protocol tracks the peak price of each basket asset (cbBTC, WETH) over time. When the current Chainlink-reported price drops more than 20% from the peak, the Crash Shield activates and rebalances allocations toward USDC.
+GBLIN's Crash Shield is an on-chain algorithmic indicator. The protocol tracks the peak price of each basket asset (cbBTC, WETH) over time. When the current Chainlink-reported price draws down past the adaptive threshold (from ~15%, scaling with volatility and decaying peaks in V6), the Crash Shield activates and rebalances allocations toward USDC.
 
 This means: **`crashShieldActive: true` is a high-confidence on-chain signal that significant market drawdown has occurred.** It's not opinion-based, not lagging like sentiment indexes, and not subject to manipulation (the underlying data is Chainlink oracles).
 

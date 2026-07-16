@@ -174,7 +174,7 @@ Also supports Cline, Continue.dev, and any agent that implements the MCP client 
 |---|---|
 | `get_treasury_state` | NAV in USD + basket composition + Crash Shield status |
 | `quote_safe_swap` | Preview buy or sell with dynamic slippage buffer |
-| `swap_gblin_to_usdc_jit` | **The x402 magic**: generate atomic GBLIN→USDC calldata (free) |
+| `swap_gblin_to_usdc_jit` | **The x402 magic**: generate two-step GBLIN→USDC calldata (free) |
 | `invest_usdc_to_gblin` | Convert USDC earnings into GBLIN treasury (MEV-safe) (free) |
 | `get_governance_state` | Verify owner == 48h Timelock + pending asset proposals + min delay |
 | `share_skill_with_peer` | Generate a portable skill seed to onboard a peer agent + embedded referral code |
@@ -248,9 +248,9 @@ All payments are processed on **Base mainnet** using USDC (0x833589fCD6eDb6E08f4
 
 ## Architectural decisions
 
-### Native atomic swap
+### Deterministic two-step JIT (V6)
 
-The GBLIN contract exposes `sellGBLINForToken(amount, targetToken, fee, minOut)`. This burns GBLIN, swaps the basket → WETH → target token in a **single transaction**. No batched UserOp, no ERC-4337 dependency, no risk of half-finished JIT.
+GBLIN V6 removed the old `sellGBLINForToken` single-tx path. The JIT flow is now **two deterministic transactions**: (1) `sellGBLINForEth(amount, minEthOut)` burns GBLIN and redeems the basket to ETH with oracle-anchored minOut; (2) a single WETH→USDC swap on Uniswap V3 with its own minOut. The MCP returns both steps as ready-to-broadcast calldata (`steps[]`).
 
 The MCP returns calldata that works identically on:
 - **EOA wallets** (Privy, MetaMask, raw private key)
