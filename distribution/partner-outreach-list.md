@@ -9,6 +9,9 @@ Mint: `GET https://gblin.digital/api/x402/attestation` ($0.003) · Verify (free)
 `verify_risk_attestation` in `@gblin-protocol/mcp-server` · One-pager:
 `distribution/partner-integration.md`.
 
+**Ready-to-send messages** for targets 1–5 are drafted in
+[`outreach-messages.md`](./outreach-messages.md) (2026-07-27).
+
 ---
 
 ## Tier 1 — capital-moving agents (best fit: they *should* check risk)
@@ -80,11 +83,11 @@ existing market.
 
 | # | Target | Channel | Ask | Sent | Reply | Status |
 |---|--------|---------|-----|------|-------|--------|
-| 1 | Giza / ARMA | X/Discord | attach + gate on crash | | | |
-| 2 | Yield Pilot / Stable-Up | X/Discord | show regime + gate | | | |
-| 3 | Kompass | X/Discord/GH | reputation input | | | |
-| 4 | Coinbase AgentKit | GitHub/Discord | native action | | | |
-| 5 | ElizaOS | GitHub/Discord | feature plugin-gblin | | | |
+| 1 | Giza / ARMA | X/Discord | attach + gate on crash | | | DRAFT READY (msg 2) |
+| 2 | Yield Pilot / Stable-Up | X/Discord | show regime + gate | | | DRAFT READY (msg 5) |
+| 3 | Kompass | X/Discord/GH | reputation input | | | DRAFT READY (msg 1 — send first) |
+| 4 | Coinbase AgentKit | GitHub/Discord | native action | | | DRAFT READY (msg 3) |
+| 5 | ElizaOS | GitHub/Discord | feature plugin-gblin | | | DRAFT READY (msg 4) |
 | 6 | AsterPay | site | list as service | | | |
 | 7 | Base MCP | GitHub | include GBLIN risk | | | |
 | 8 | Morpho curator | market/X | risk input + co-market | | | |
