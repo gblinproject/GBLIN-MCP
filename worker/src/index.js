@@ -35,36 +35,128 @@ const SERVER_INFO = { name: "gblin-mcp-http", version: "0.1.0" };
 
 // ── Tools ───────────────────────────────────────────────────────────────────
 
+// All tools are read-only, idempotent within their cache TTL, and touch the
+// open world (public chain + public HTTP endpoints) — declared via annotations.
+const RO = {
+  readOnlyHint: true,
+  destructiveHint: false,
+  idempotentHint: true,
+  openWorldHint: true,
+};
+
 const TOOLS = [
   {
     name: "get_market_risk_regime",
     description:
       "Current BTC/ETH market risk regime (calm | elevated | crash) read live from GBLIN's on-chain Crash Shield on Base mainnet. Free. Same math as the paid EIP-712 attestation, but unsigned — for a signed, attachable proof buy the x402 attestation (see how_to_buy_live_attestation).",
     inputSchema: { type: "object", properties: {}, required: [] },
+    annotations: { title: "Market risk regime (live, free)", ...RO },
+    outputSchema: {
+      type: "object",
+      properties: {
+        regime: { type: "string", enum: ["calm", "elevated", "crash"], description: "Current risk regime" },
+        regime_code: { type: "integer", description: "0 calm, 1 elevated, 2 crash" },
+        risk_posture: { type: "string", enum: ["risk_on", "reduce", "risk_off"], description: "Suggested posture" },
+        severity_pct: { type: "number", description: "Max crash-shield weight cut across risk assets, percent" },
+        defensive_cash_pct: { type: "number", description: "USDC dynamic weight in the basket, percent" },
+        shield_active: { type: "boolean", description: "True when any risk asset is currently slashed" },
+        assets: {
+          type: "array",
+          description: "Per-risk-asset shield state",
+          items: {
+            type: "object",
+            properties: {
+              token: { type: "string", description: "ERC-20 address" },
+              shielded: { type: "boolean" },
+              base_weight_pct: { type: "number" },
+              dynamic_weight_pct: { type: "number" },
+              weight_cut_pct: { type: "number" },
+            },
+            required: ["token", "shielded", "weight_cut_pct"],
+          },
+        },
+        contract: { type: "string", description: "GBLIN contract on Base" },
+        chain_id: { type: "integer" },
+        source: { type: "string" },
+        note: { type: "string" },
+      },
+      required: ["regime", "regime_code", "severity_pct", "defensive_cash_pct", "shield_active", "assets"],
+    },
   },
   {
     name: "get_attestation_sample",
     description:
       "FREE static sample of the paid Risk Attestation: identical shape and EIP-712 schema, sample:true, permanently expired. Wire your parser/verifier against this, then switch to the paid endpoint.",
     inputSchema: { type: "object", properties: {}, required: [] },
+    annotations: { title: "Attestation sample (free, expired)", ...RO },
+    outputSchema: {
+      type: "object",
+      properties: {
+        sample: { type: "boolean", description: "Always true — never a live signal" },
+        attestation: {
+          type: "object",
+          description: "Same field contract as the paid attestation (regime, shield_active, severity_pct, defensive_cash_pct, expires_at, ...)",
+        },
+        eip712: { type: "object", description: "EIP-712 domain/types/message to recompute the digest" },
+        attestation_id: { type: "string", description: "hashTypedData digest — recompute to verify" },
+        signature: { type: ["string", "null"] },
+        attestor: { type: ["string", "null"] },
+        signed: { type: "boolean" },
+        verify: { type: "object" },
+        meta: { type: "object" },
+      },
+      required: ["sample", "attestation", "attestation_id", "signed"],
+    },
   },
   {
     name: "get_agent_economy_stats",
     description:
       "Public GBLIN agent-economy observatory stats (x402 calls, payers, on-chain counters). Cached.",
     inputSchema: { type: "object", properties: {}, required: [] },
+    annotations: { title: "Agent-economy stats (free, cached)", ...RO },
+    outputSchema: {
+      type: "object",
+      description:
+        "Observatory payload from gblin.digital/api/agent-stats — cumulative x402 call and payer counters with methodology notes",
+      additionalProperties: true,
+    },
   },
   {
     name: "get_protocol_info",
     description:
       "GBLIN protocol overview for agents (llms.txt): contracts, endpoints, prices, payment flow, field contract of the attestation.",
     inputSchema: { type: "object", properties: {}, required: [] },
+    annotations: { title: "Protocol info / llms.txt (free)", ...RO },
+    outputSchema: {
+      type: "object",
+      properties: {
+        llms_txt: { type: "string", description: "The full llms.txt document (plain text)" },
+      },
+      required: ["llms_txt"],
+    },
   },
   {
     name: "how_to_buy_live_attestation",
     description:
       "Instructions for buying the live EIP-712-signed risk attestation over x402 ($0.003 USDC on Base) and verifying it offline.",
     inputSchema: { type: "object", properties: {}, required: [] },
+    annotations: { title: "How to buy the signed attestation", ...RO },
+    outputSchema: {
+      type: "object",
+      properties: {
+        endpoint: { type: "string", description: "Paid x402 endpoint URL" },
+        price: { type: "string" },
+        flow: { type: "string", description: "Step-by-step x402 payment flow" },
+        free_sample: { type: "string", description: "Free integration-sample URL" },
+        verify_offline: { type: "string", description: "How to verify the attestation without trusting the server" },
+        stable_field_contract: {
+          type: "array",
+          items: { type: "string" },
+          description: "Field names guaranteed stable without versioning",
+        },
+      },
+      required: ["endpoint", "price", "flow"],
+    },
   },
 ];
 
@@ -272,6 +364,7 @@ async function handleMessage(msg, env) {
           const out = await callTool(name, env);
           return rpcResult(id, {
             content: [{ type: "text", text: JSON.stringify(out, null, 2) }],
+            structuredContent: out, // matches the tool's declared outputSchema
             isError: false,
           });
         } catch (err) {

@@ -6,7 +6,7 @@
     "url": "https://github.com/gblinproject/GBLIN-MCP",
     "source": "github"
   },
-  "version": "0.2.2",
+  "version": "0.2.3",
   "packages": [
     {
       "registryType": "npm",
@@ -24,6 +24,12 @@
           "isSecret": false
         }
       ]
+    }
+  ],
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://gblin-mcp.gblin-mcp-worker.workers.dev/mcp"
     }
   ]
 }

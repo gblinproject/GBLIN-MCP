@@ -11,11 +11,11 @@
 [![x402 Manifest](https://img.shields.io/badge/x402-manifest-green)](https://gblin.digital/.well-known/x402)
 [![MCP Registry](https://img.shields.io/badge/MCP%20Registry-Active-success)](https://registry.modelcontextprotocol.io)
 [![Glama Score](https://img.shields.io/badge/Glama-100%25-brightgreen)](https://glama.ai/mcp/servers/gblinproject/GBLIN-MCP)
-[![Smithery](https://img.shields.io/badge/Smithery-gblin--protocol-orange)](https://smithery.ai/servers/gblin-protocol/gblin-protocol)
+[![Smithery](https://img.shields.io/badge/Smithery-gblin--protocol-orange)](https://smithery.ai/servers/gblin-protocol/mcp)
 
 📖 **Full documentation and Quick Start:** [gblin.digital/agents](https://gblin.digital/agents)
 
-🌐 **Hosted MCP (Streamable HTTP, no install):** `https://gblin-mcp.gblin-mcp-worker.workers.dev/mcp` — free read-only tools (live risk regime, attestation sample, stats), also on [Smithery](https://smithery.ai/servers/gblin-protocol/gblin-protocol). Source in [`worker/`](worker/).
+🌐 **Hosted MCP (Streamable HTTP, no install):** `https://gblin-mcp.gblin-mcp-worker.workers.dev/mcp` — free read-only tools (live risk regime, attestation sample, stats), also on [Smithery](https://smithery.ai/servers/gblin-protocol/mcp). Source in [`worker/`](worker/).
 
 ---
 
