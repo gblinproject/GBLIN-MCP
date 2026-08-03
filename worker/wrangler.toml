@@ -1,0 +1,10 @@
+name = "gblin-mcp"
+main = "src/index.js"
+compatibility_date = "2026-07-01"
+
+# Kill switch: set MCP_DISABLED = "true" (dashboard → Settings → Variables)
+# to make every request return 503 without touching code.
+[vars]
+MCP_DISABLED = "false"
+# Optional: override the Base RPC endpoint.
+# GBLIN_RPC_URL = "https://mainnet.base.org"
