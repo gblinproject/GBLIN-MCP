@@ -8,3 +8,12 @@ compatibility_date = "2026-07-01"
 MCP_DISABLED = "false"
 # Optional: override the Base RPC endpoint.
 # GBLIN_RPC_URL = "https://mainnet.base.org"
+
+# Coherence Proof v0 — memoria delle osservazioni (promesse vs condotta)
+[[kv_namespaces]]
+binding = "COHERENCE"
+id = "7234cbebc57b4312885f1d4365b45173"
+
+# Il battito dell'automa: osserva ogni 10 minuti
+[triggers]
+crons = ["*/10 * * * *"]

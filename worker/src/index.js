@@ -158,7 +158,172 @@ const TOOLS = [
       required: ["endpoint", "price", "flow"],
     },
   },
+  {
+    name: "get_coherence_report",
+    description:
+      "Coherence Proof (free, forever): does this subject DO what it publicly promised? v0 observes GBLIN itself — pre-registered, hash-pinned promises (uptime of the paid attestation endpoint, honesty of public counters) probed every 10 minutes, with kept/violated tallies. The certifier submits itself to its own instrument first. Reading is free by design; being observed is the paid service.",
+    inputSchema: { type: "object", properties: {}, required: [] },
+    annotations: { title: "Coherence report (promises vs conduct, free)", ...RO },
+    outputSchema: {
+      type: "object",
+      properties: {
+        subject: { type: "string", description: "Observed subject" },
+        promises: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              id: { type: "string", description: "Short promise id (P1, P2, ...)" },
+              promiseId: { type: "string", description: "keccak256 of the pre-registered promise file" },
+              file: { type: "string", description: "Public URL of the promise file" },
+              observations: { type: "integer" },
+              kept: { type: "integer" },
+              violations: { type: "integer" },
+              kept_bps: { type: "integer", description: "Kept ratio in basis points (10000 = 100%)" },
+              last_observation: { type: "string" },
+              last_status: { type: "string", enum: ["kept", "violated"] },
+            },
+          },
+        },
+        observing_since: { type: "string" },
+        method: { type: "string" },
+      },
+      required: ["subject", "promises"],
+    },
+  },
 ];
+
+// ── Coherence Proof v0 — the automaton observing ourselves ──────────────────
+//
+// Pre-registered, hash-pinned promises (pattern borrowed from the one client
+// that holds US accountable: a published file whose hash is the commitment).
+// Every 10 minutes the scheduled handler probes the checks; every observation
+// is tallied per promise per day in KV. Reading the report is free, forever —
+// that is the design, not a promo. On-chain EAS attestation of the daily
+// window ships when the dedicated attester wallet exists (founder action);
+// nothing here needs to change for that, it only consumes these tallies.
+const COHERENCE_SUBJECT = "gblin.digital (GBLIN Protocol, ERC-8004 #59286)";
+const COHERENCE_PROMISES = [
+  {
+    id: "P1",
+    file: "https://gblin.digital/promises/P1-attestation-uptime.json",
+    promiseId: "0x39657f8b917beefaf60bc239889bd07ec2ed1c34d5bd9cd8230aa053081858a5",
+    // kept when BOTH: paid endpoint answers 402 with a non-empty challenge body,
+    // and the free sample answers 200 with sample:true.
+    check: async () => {
+      const paid = await fetch("https://gblin.digital/api/x402/attestation", {
+        headers: { accept: "application/json" },
+      });
+      const paidBody = await paid.text();
+      const paidOk = paid.status === 402 && paidBody.length > 2;
+      const sample = await fetch("https://gblin.digital/api/x402/attestation-sample", {
+        headers: { accept: "application/json" },
+      });
+      let sampleOk = false;
+      if (sample.status === 200) {
+        try { sampleOk = (await sample.json()).sample === true; } catch { sampleOk = false; }
+      }
+      return paidOk && sampleOk;
+    },
+  },
+  {
+    id: "P2",
+    file: "https://gblin.digital/promises/P2-honest-counters.json",
+    promiseId: "0xfd49bca1060869f41d97b877878e8886e028632d7d9c0be60110c174d31b3650",
+    // kept when the public counters answer with numbers AND the disclosure file
+    // (which carries our own wallet list) is still served. Silently removing
+    // the disclosure is the violation this promise exists to catch.
+    check: async () => {
+      const stats = await fetch("https://gblin.digital/api/agent-stats", {
+        headers: { accept: "application/json" },
+      });
+      let statsOk = false;
+      if (stats.status === 200) {
+        try {
+          const j = await stats.json();
+          statsOk = Number.isFinite(Number(j.total_paid_calls)) || Number.isFinite(Number(j.totalCalls));
+        } catch { statsOk = false; }
+      }
+      const disc = await fetch("https://gblin.digital/promises/P2-honest-counters.json");
+      let discOk = false;
+      if (disc.status === 200) {
+        const t = await disc.text();
+        discOk = t.includes("our_wallets") && t.includes("0xd15ca75ff73aa5173c28bd82fff302204cf6c6d9");
+      }
+      return statsOk && discOk;
+    },
+  },
+];
+
+function utcDay(ts = Date.now()) {
+  return new Date(ts).toISOString().slice(0, 10);
+}
+
+// One KV doc per promise per day: { obs, kept, last, lastStatus }.
+async function coherenceObserve(env) {
+  if (!env.COHERENCE) return; // binding absent (local dev): observation is a no-op
+  const day = utcDay();
+  for (const p of COHERENCE_PROMISES) {
+    // A promise is IN FORCE only once its file is public: pre-registration is
+    // the commitment. Until then we do not observe — recording violations for
+    // an unpublished promise would be theatre, not measurement.
+    try {
+      const f = await fetch(p.file, { headers: { accept: "application/json" } });
+      if (f.status !== 200) continue;
+    } catch { continue; }
+    let kept = false;
+    try { kept = await p.check(); } catch { kept = false; }
+    const key = `day:${p.id}:${day}`;
+    let doc = { obs: 0, kept: 0, last: null, lastStatus: null };
+    try { doc = JSON.parse((await env.COHERENCE.get(key)) || "null") || doc; } catch { /* fresh */ }
+    doc.obs += 1;
+    if (kept) doc.kept += 1;
+    doc.last = new Date().toISOString();
+    doc.lastStatus = kept ? "kept" : "violated";
+    await env.COHERENCE.put(key, JSON.stringify(doc), { expirationTtl: 60 * 86400 });
+    // First-ever observation timestamp, written once.
+    const since = await env.COHERENCE.get("since");
+    if (!since) await env.COHERENCE.put("since", doc.last);
+  }
+}
+
+async function coherenceReport(env) {
+  const promises = [];
+  const since = env.COHERENCE ? await env.COHERENCE.get("since") : null;
+  for (const p of COHERENCE_PROMISES) {
+    let obs = 0, kept = 0, last = null, lastStatus = null;
+    if (env.COHERENCE) {
+      const list = await env.COHERENCE.list({ prefix: `day:${p.id}:` });
+      for (const k of list.keys) {
+        try {
+          const d = JSON.parse((await env.COHERENCE.get(k.name)) || "{}");
+          obs += d.obs || 0;
+          kept += d.kept || 0;
+          if (!last || (d.last && d.last > last)) { last = d.last; lastStatus = d.lastStatus; }
+        } catch { /* skip corrupt day */ }
+      }
+    }
+    promises.push({
+      id: p.id,
+      promiseId: p.promiseId,
+      file: p.file,
+      observations: obs,
+      kept,
+      violations: obs - kept,
+      kept_bps: obs > 0 ? Math.round((kept / obs) * 10000) : null,
+      last_observation: last,
+      last_status: lastStatus,
+    });
+  }
+  return {
+    subject: COHERENCE_SUBJECT,
+    promises,
+    observing_since: since,
+    method:
+      "Promises are pre-registered, hash-pinned public files (promiseId = keccak256 of the file). An automaton probes the declared checks every 10 minutes from Cloudflare's edge and tallies kept/violated per day. Reading is free forever; the paid service is being observed. Daily on-chain EAS attestations (schema on Base) ship next.",
+    schema_uid_planned: "0x9f433a96467ab75530009970e5aa938ec94d8a49f08f66e7381822d557b448ef",
+  };
+}
 
 // ── Cached fetch helper (Cloudflare Cache API) ──────────────────────────────
 
@@ -301,6 +466,9 @@ async function callTool(name, env) {
       const r = await cachedFetch(`${SITE}/api/x402/llms.txt`, 3600);
       return { llms_txt: await r.text() };
     }
+    case "get_coherence_report":
+      return await coherenceReport(env);
+
     case "how_to_buy_live_attestation":
       return {
         endpoint: `${SITE}/api/x402/attestation`,
@@ -440,6 +608,11 @@ export default {
       });
     }
 
+    // Public coherence report for humans, dashboards and crawlers. Free forever.
+    if (url.pathname === "/coherence" && request.method === "GET") {
+      return json(await coherenceReport(env));
+    }
+
     if (url.pathname !== "/mcp") return json({ error: "not found — MCP endpoint is /mcp" }, 404);
 
     // Stateless server: no SSE stream to resume. Spec-permitted response.
@@ -470,5 +643,10 @@ export default {
     const result = await handleMessage(body, env);
     if (result === null) return new Response(null, { status: 202, headers: CORS });
     return json(result);
+  },
+
+  // Cron: the automaton's heartbeat. Every tick observes every promise once.
+  async scheduled(_event, env, ctx) {
+    ctx.waitUntil(coherenceObserve(env));
   },
 };
