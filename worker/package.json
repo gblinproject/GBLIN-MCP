@@ -7,5 +7,9 @@
   },
   "devDependencies": {
     "wrangler": "^4"
+  },
+  "type": "module",
+  "dependencies": {
+    "viem": "^2.55.11"
   }
 }

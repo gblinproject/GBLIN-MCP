@@ -287,6 +287,214 @@ async function coherenceObserve(env) {
   }
 }
 
+// ── On-chain attestation (EAS on Base) — the automaton's daily seal ─────────
+//
+// Once a day, for each promise, write one EAS attestation of the finished-day
+// window (observations, kept, violations) signed by the dedicated observer
+// wallet. Fully isolated and fail-safe: no ATTESTER_KEY → skipped silently, so
+// the free report keeps working and nothing else in the Worker is touched. A
+// wrong on-chain write is permanent, so this only runs on a CLOSED day (never
+// the current one) and never re-attests a day already sealed (idempotent via KV).
+const EAS_CONTRACT = "0x4200000000000000000000000000000000000021"; // EAS on Base
+const SCHEMA_UID =
+  "0x9f433a96467ab75530009970e5aa938ec94d8a49f08f66e7381822d557b448ef";
+
+const EAS_ATTEST_ABI = [
+  {
+    name: "attest",
+    type: "function",
+    stateMutability: "payable",
+    inputs: [
+      {
+        name: "request",
+        type: "tuple",
+        components: [
+          { name: "schema", type: "bytes32" },
+          {
+            name: "data",
+            type: "tuple",
+            components: [
+              { name: "recipient", type: "address" },
+              { name: "expirationTime", type: "uint64" },
+              { name: "revocable", type: "bool" },
+              { name: "refUID", type: "bytes32" },
+              { name: "data", type: "bytes" },
+              { name: "value", type: "uint256" },
+            ],
+          },
+        ],
+      },
+    ],
+    outputs: [{ name: "", type: "bytes32" }],
+  },
+];
+
+const SCHEMA_FIELDS = [
+  { name: "subject", type: "address" },
+  { name: "promiseId", type: "bytes32" },
+  { name: "windowStart", type: "uint64" },
+  { name: "windowEnd", type: "uint64" },
+  { name: "observations", type: "uint32" },
+  { name: "keptBps", type: "uint16" },
+  { name: "violations", type: "uint16" },
+  { name: "evidenceURI", type: "string" },
+];
+
+// GBLIN's own on-chain identity, the subject of these self-attestations.
+const SELF_SUBJECT = "0x9ffa542e369c53af62380296092ec669f329a9ee";
+
+async function coherenceAttestClosedDay(env) {
+  if (!env.COHERENCE || !env.ATTESTER_KEY) return; // not armed yet — by design
+  let viem, accounts, chains;
+  try {
+    viem = await import("viem");
+    accounts = await import("viem/accounts");
+    chains = await import("viem/chains");
+  } catch {
+    return; // library unavailable: never block the heartbeat
+  }
+
+  // Yesterday (UTC): the most recent fully closed day.
+  const yesterday = utcDay(Date.now() - 86400000);
+  const key = env.ATTESTER_KEY.startsWith("0x") ? env.ATTESTER_KEY : "0x" + env.ATTESTER_KEY;
+  const account = accounts.privateKeyToAccount(key);
+  const rpc = env.GBLIN_RPC_URL || "https://mainnet.base.org";
+  const pub = viem.createPublicClient({ chain: chains.base, transport: viem.http(rpc) });
+  const client = viem.createWalletClient({ account, chain: chains.base, transport: viem.http(rpc) });
+  // Explicit nonce: multiple seals in one run must not collide on a stale nonce.
+  let nonce = await pub.getTransactionCount({ address: account.address });
+
+  for (const p of COHERENCE_PROMISES) {
+    const sealKey = `sealed:${p.id}:${yesterday}`;
+    if (await env.COHERENCE.get(sealKey)) continue; // already attested
+    const dayDoc = await env.COHERENCE.get(`day:${p.id}:${yesterday}`);
+    if (!dayDoc) continue; // no observations that day: nothing to seal
+    let d;
+    try { d = JSON.parse(dayDoc); } catch { continue; }
+    if (!d.obs) continue;
+
+    const keptBps = Math.round((d.kept / d.obs) * 10000);
+    const start = Math.floor(Date.parse(`${yesterday}T00:00:00Z`) / 1000);
+    const end = start + 86399;
+    const encoded = viem.encodeAbiParameters(SCHEMA_FIELDS, [
+      SELF_SUBJECT,
+      p.promiseId,
+      BigInt(start),
+      BigInt(end),
+      d.obs,
+      keptBps,
+      d.obs - d.kept,
+      p.file,
+    ]);
+
+    try {
+      const hash = await client.writeContract({
+        address: EAS_CONTRACT,
+        abi: EAS_ATTEST_ABI,
+        functionName: "attest",
+        nonce,
+        args: [
+          {
+            schema: SCHEMA_UID,
+            data: {
+              recipient: SELF_SUBJECT,
+              expirationTime: 0n,
+              revocable: true,
+              refUID: "0x0000000000000000000000000000000000000000000000000000000000000000",
+              data: encoded,
+              value: 0n,
+            },
+          },
+        ],
+      });
+      nonce += 1; // advance only after a successful submission
+      // Mark sealed only after a tx hash exists, so a failure retries next day.
+      await env.COHERENCE.put(sealKey, hash, { expirationTtl: 120 * 86400 });
+      await env.COHERENCE.put(`txlast:${p.id}`, JSON.stringify({ day: yesterday, hash }));
+    } catch {
+      // RPC/gas hiccup: leave unsealed, retry on the next daily run.
+    }
+  }
+}
+
+// One-shot "genesis" seal: attest the real cumulative window observed so far
+// (from first observation to now), honestly labelled as a partial genesis
+// window — never a full closed day. Used to write the very first on-chain proof
+// on demand and to test the signing path end-to-end while a human is watching.
+async function coherenceAttestGenesis(env) {
+  if (!env.COHERENCE) return { ok: false, error: "no KV binding" };
+  if (!env.ATTESTER_KEY) return { ok: false, error: "no ATTESTER_KEY set" };
+  let viem, accounts, chains;
+  try {
+    viem = await import("viem");
+    accounts = await import("viem/accounts");
+    chains = await import("viem/chains");
+  } catch (e) {
+    return { ok: false, error: "viem import failed: " + (e.message || e) };
+  }
+
+  let account;
+  try {
+    const key = env.ATTESTER_KEY.startsWith("0x") ? env.ATTESTER_KEY : "0x" + env.ATTESTER_KEY;
+    account = accounts.privateKeyToAccount(key);
+  } catch (e) {
+    return { ok: false, error: "bad ATTESTER_KEY: " + (e.message || e) };
+  }
+  const rpc = env.GBLIN_RPC_URL || "https://mainnet.base.org";
+  const pub = viem.createPublicClient({ chain: chains.base, transport: viem.http(rpc) });
+  const client = viem.createWalletClient({ account, chain: chains.base, transport: viem.http(rpc) });
+
+  const sinceIso = await env.COHERENCE.get("since");
+  const start = sinceIso ? Math.floor(Date.parse(sinceIso) / 1000) : Math.floor(Date.now() / 1000);
+  const end = Math.floor(Date.now() / 1000);
+  const results = [];
+  // Manage the nonce ourselves: two writes from one wallet in the same request
+  // would otherwise collide on a stale nonce (the cause of the P2 failure).
+  let nonce = await pub.getTransactionCount({ address: account.address });
+
+  for (const p of COHERENCE_PROMISES) {
+    // Idempotent per promise: skip one already sealed as genesis.
+    let existing = null;
+    try { existing = JSON.parse((await env.COHERENCE.get(`txlast:${p.id}`)) || "null"); } catch { /* none */ }
+    if (existing && existing.day === "genesis") { results.push({ id: p.id, skipped: "already sealed" }); continue; }
+
+    let obs = 0, kept = 0;
+    const list = await env.COHERENCE.list({ prefix: `day:${p.id}:` });
+    for (const k of list.keys) {
+      try { const d = JSON.parse((await env.COHERENCE.get(k.name)) || "{}"); obs += d.obs || 0; kept += d.kept || 0; } catch { /* skip */ }
+    }
+    if (!obs) { results.push({ id: p.id, skipped: "no observations yet" }); continue; }
+
+    const keptBps = Math.round((kept / obs) * 10000);
+    const encoded = viem.encodeAbiParameters(SCHEMA_FIELDS, [
+      SELF_SUBJECT, p.promiseId, BigInt(start), BigInt(end), obs, keptBps, obs - kept,
+      p.file + "#genesis",
+    ]);
+    try {
+      const hash = await client.writeContract({
+        address: EAS_CONTRACT,
+        abi: EAS_ATTEST_ABI,
+        functionName: "attest",
+        nonce,
+        args: [{
+          schema: SCHEMA_UID,
+          data: {
+            recipient: SELF_SUBJECT, expirationTime: 0n, revocable: true,
+            refUID: "0x0000000000000000000000000000000000000000000000000000000000000000",
+            data: encoded, value: 0n,
+          },
+        }],
+      });
+      nonce += 1; // advance only after a successful submission
+      await env.COHERENCE.put(`txlast:${p.id}`, JSON.stringify({ day: "genesis", hash }));
+      results.push({ id: p.id, hash, observations: obs, keptBps });
+    } catch (e) {
+      results.push({ id: p.id, error: (e.shortMessage || e.message || String(e)).slice(0, 200) });
+    }
+  }
+  return { ok: results.some((r) => r.hash), results };
+}
+
 async function coherenceReport(env) {
   const promises = [];
   const since = env.COHERENCE ? await env.COHERENCE.get("since") : null;
@@ -303,6 +511,11 @@ async function coherenceReport(env) {
         } catch { /* skip corrupt day */ }
       }
     }
+    // Most recent on-chain seal for this promise, if any.
+    let lastSeal = null;
+    if (env.COHERENCE) {
+      try { lastSeal = JSON.parse((await env.COHERENCE.get(`txlast:${p.id}`)) || "null"); } catch { /* none */ }
+    }
     promises.push({
       id: p.id,
       promiseId: p.promiseId,
@@ -313,15 +526,27 @@ async function coherenceReport(env) {
       kept_bps: obs > 0 ? Math.round((kept / obs) * 10000) : null,
       last_observation: last,
       last_status: lastStatus,
+      last_onchain_seal: lastSeal
+        ? { day: lastSeal.day, tx: lastSeal.hash, basescan: `https://basescan.org/tx/${lastSeal.hash}` }
+        : null,
     });
   }
+  const anchored = promises.some((p) => p.last_onchain_seal);
   return {
     subject: COHERENCE_SUBJECT,
     promises,
     observing_since: since,
+    onchain: {
+      anchored,
+      schema_uid: SCHEMA_UID,
+      eas: EAS_CONTRACT,
+      schema: "https://base.easscan.org/schema/view/" + SCHEMA_UID,
+      note: anchored
+        ? "Each closed day is sealed as an EAS attestation on Base by the observer wallet."
+        : "On-chain sealing is armed once the observer wallet key is configured; the off-chain report above is live now.",
+    },
     method:
-      "Promises are pre-registered, hash-pinned public files (promiseId = keccak256 of the file). An automaton probes the declared checks every 10 minutes from Cloudflare's edge and tallies kept/violated per day. Reading is free forever; the paid service is being observed. Daily on-chain EAS attestations (schema on Base) ship next.",
-    schema_uid_planned: "0x9f433a96467ab75530009970e5aa938ec94d8a49f08f66e7381822d557b448ef",
+      "Promises are pre-registered, hash-pinned public files (promiseId = keccak256 of the file). An automaton probes the declared checks every 10 minutes from Cloudflare's edge and tallies kept/violated per day, then seals each closed day as an EAS attestation on Base. Reading is free forever; the paid service is being observed.",
   };
 }
 
@@ -613,6 +838,15 @@ export default {
       return json(await coherenceReport(env));
     }
 
+    // One-shot genesis seal, token-gated. Writes the first on-chain proof on
+    // demand (also an end-to-end test of the signing path). Idempotent: refuses
+    // once genesis is done. No token configured → 404 (feature stays invisible).
+    if (url.pathname === "/coherence/genesis" && request.method === "POST") {
+      if (!env.SEAL_TOKEN) return json({ error: "not found" }, 404);
+      if (url.searchParams.get("token") !== env.SEAL_TOKEN) return json({ error: "forbidden" }, 403);
+      return json(await coherenceAttestGenesis(env));
+    }
+
     if (url.pathname !== "/mcp") return json({ error: "not found — MCP endpoint is /mcp" }, 404);
 
     // Stateless server: no SSE stream to resume. Spec-permitted response.
@@ -645,8 +879,21 @@ export default {
     return json(result);
   },
 
-  // Cron: the automaton's heartbeat. Every tick observes every promise once.
+  // Cron: the automaton's heartbeat. Every 10-minute tick observes every
+  // promise once; on the first tick of a new UTC day it also seals the day
+  // that just closed as an on-chain attestation (no-op until the key is set).
   async scheduled(_event, env, ctx) {
-    ctx.waitUntil(coherenceObserve(env));
+    const work = (async () => {
+      await coherenceObserve(env);
+      if (env.COHERENCE) {
+        const today = utcDay();
+        const marker = await env.COHERENCE.get("attest:lastRun");
+        if (marker !== today) {
+          await env.COHERENCE.put("attest:lastRun", today);
+          await coherenceAttestClosedDay(env);
+        }
+      }
+    })();
+    ctx.waitUntil(work);
   },
 };
