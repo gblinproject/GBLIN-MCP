@@ -354,65 +354,84 @@ async function coherenceAttestClosedDay(env) {
     return; // library unavailable: never block the heartbeat
   }
 
-  // Yesterday (UTC): the most recent fully closed day.
-  const yesterday = utcDay(Date.now() - 86400000);
+  const today = utcDay();
   const key = env.ATTESTER_KEY.startsWith("0x") ? env.ATTESTER_KEY : "0x" + env.ATTESTER_KEY;
   const account = accounts.privateKeyToAccount(key);
-  const rpc = env.GBLIN_RPC_URL || "https://mainnet.base.org";
-  const pub = viem.createPublicClient({ chain: chains.base, transport: viem.http(rpc) });
-  const client = viem.createWalletClient({ account, chain: chains.base, transport: viem.http(rpc) });
+  // Base's own RPC rejects Cloudflare egress IPs; rotate over the same fallback
+  // list the read path uses (working endpoints first, mainnet.base.org last) so
+  // the cron's writes actually land instead of failing silently.
+  const rpcs = env.GBLIN_RPC_URL ? [env.GBLIN_RPC_URL, ...FALLBACK_RPCS] : FALLBACK_RPCS;
+  const transport = viem.fallback(rpcs.map((u) => viem.http(u)));
+  const pub = viem.createPublicClient({ chain: chains.base, transport });
+  const client = viem.createWalletClient({ account, chain: chains.base, transport });
   // Explicit nonce: multiple seals in one run must not collide on a stale nonce.
   let nonce = await pub.getTransactionCount({ address: account.address });
 
+  let sealedThisRun = 0;
+  const MAX_SEALS_PER_RUN = 12; // safety cap for CPU / subrequest limits
+
   for (const p of COHERENCE_PROMISES) {
-    const sealKey = `sealed:${p.id}:${yesterday}`;
-    if (await env.COHERENCE.get(sealKey)) continue; // already attested
-    const dayDoc = await env.COHERENCE.get(`day:${p.id}:${yesterday}`);
-    if (!dayDoc) continue; // no observations that day: nothing to seal
-    let d;
-    try { d = JSON.parse(dayDoc); } catch { continue; }
-    if (!d.obs) continue;
+    // Seal EVERY closed day (day < today) that has observations and isn't sealed
+    // yet — oldest first. This catches up days missed while sealing was down, so
+    // a failed run genuinely retries later instead of losing the day forever.
+    const prefix = `day:${p.id}:`;
+    const list = await env.COHERENCE.list({ prefix });
+    const days = list.keys
+      .map((k) => k.name.slice(prefix.length))
+      .filter((day) => day < today) // YYYY-MM-DD compares lexicographically
+      .sort();
+    for (const day of days) {
+      if (sealedThisRun >= MAX_SEALS_PER_RUN) return;
+      const sealKey = `sealed:${p.id}:${day}`;
+      if (await env.COHERENCE.get(sealKey)) continue; // already attested
+      const dayDoc = await env.COHERENCE.get(`${prefix}${day}`);
+      if (!dayDoc) continue; // no observations that day: nothing to seal
+      let d;
+      try { d = JSON.parse(dayDoc); } catch { continue; }
+      if (!d.obs) continue;
 
-    const keptBps = Math.round((d.kept / d.obs) * 10000);
-    const start = Math.floor(Date.parse(`${yesterday}T00:00:00Z`) / 1000);
-    const end = start + 86399;
-    const encoded = viem.encodeAbiParameters(SCHEMA_FIELDS, [
-      SELF_SUBJECT,
-      p.promiseId,
-      BigInt(start),
-      BigInt(end),
-      d.obs,
-      keptBps,
-      d.obs - d.kept,
-      p.file,
-    ]);
+      const keptBps = Math.round((d.kept / d.obs) * 10000);
+      const start = Math.floor(Date.parse(`${day}T00:00:00Z`) / 1000);
+      const end = start + 86399;
+      const encoded = viem.encodeAbiParameters(SCHEMA_FIELDS, [
+        SELF_SUBJECT,
+        p.promiseId,
+        BigInt(start),
+        BigInt(end),
+        d.obs,
+        keptBps,
+        d.obs - d.kept,
+        p.file,
+      ]);
 
-    try {
-      const hash = await client.writeContract({
-        address: EAS_CONTRACT,
-        abi: EAS_ATTEST_ABI,
-        functionName: "attest",
-        nonce,
-        args: [
-          {
-            schema: SCHEMA_UID,
-            data: {
-              recipient: SELF_SUBJECT,
-              expirationTime: 0n,
-              revocable: true,
-              refUID: "0x0000000000000000000000000000000000000000000000000000000000000000",
-              data: encoded,
-              value: 0n,
+      try {
+        const hash = await client.writeContract({
+          address: EAS_CONTRACT,
+          abi: EAS_ATTEST_ABI,
+          functionName: "attest",
+          nonce,
+          args: [
+            {
+              schema: SCHEMA_UID,
+              data: {
+                recipient: SELF_SUBJECT,
+                expirationTime: 0n,
+                revocable: true,
+                refUID: "0x0000000000000000000000000000000000000000000000000000000000000000",
+                data: encoded,
+                value: 0n,
+              },
             },
-          },
-        ],
-      });
-      nonce += 1; // advance only after a successful submission
-      // Mark sealed only after a tx hash exists, so a failure retries next day.
-      await env.COHERENCE.put(sealKey, hash, { expirationTtl: 120 * 86400 });
-      await env.COHERENCE.put(`txlast:${p.id}`, JSON.stringify({ day: yesterday, hash }));
-    } catch {
-      // RPC/gas hiccup: leave unsealed, retry on the next daily run.
+          ],
+        });
+        nonce += 1; // advance only after a successful submission
+        sealedThisRun += 1;
+        // Mark sealed only after a tx hash exists, so a failure retries next run.
+        await env.COHERENCE.put(sealKey, hash, { expirationTtl: 120 * 86400 });
+        await env.COHERENCE.put(`txlast:${p.id}`, JSON.stringify({ day, hash }));
+      } catch {
+        // RPC/gas hiccup: leave unsealed, retry on the next run (now it truly does).
+      }
     }
   }
 }
@@ -440,9 +459,10 @@ async function coherenceAttestGenesis(env) {
   } catch (e) {
     return { ok: false, error: "bad ATTESTER_KEY: " + (e.message || e) };
   }
-  const rpc = env.GBLIN_RPC_URL || "https://mainnet.base.org";
-  const pub = viem.createPublicClient({ chain: chains.base, transport: viem.http(rpc) });
-  const client = viem.createWalletClient({ account, chain: chains.base, transport: viem.http(rpc) });
+  const rpcs = env.GBLIN_RPC_URL ? [env.GBLIN_RPC_URL, ...FALLBACK_RPCS] : FALLBACK_RPCS;
+  const transport = viem.fallback(rpcs.map((u) => viem.http(u)));
+  const pub = viem.createPublicClient({ chain: chains.base, transport });
+  const client = viem.createWalletClient({ account, chain: chains.base, transport });
 
   const sinceIso = await env.COHERENCE.get("since");
   const start = sinceIso ? Math.floor(Date.parse(sinceIso) / 1000) : Math.floor(Date.now() / 1000);
@@ -889,8 +909,10 @@ export default {
         const today = utcDay();
         const marker = await env.COHERENCE.get("attest:lastRun");
         if (marker !== today) {
-          await env.COHERENCE.put("attest:lastRun", today);
+          // Seal first, then advance the marker — so a fully-failed run retries
+          // on the next tick (per-day idempotency prevents any double-seal).
           await coherenceAttestClosedDay(env);
+          await env.COHERENCE.put("attest:lastRun", today);
         }
       }
     })();
