@@ -344,14 +344,14 @@ const SCHEMA_FIELDS = [
 const SELF_SUBJECT = "0x9ffa542e369c53af62380296092ec669f329a9ee";
 
 async function coherenceAttestClosedDay(env) {
-  if (!env.COHERENCE || !env.ATTESTER_KEY) return; // not armed yet — by design
+  if (!env.COHERENCE || !env.ATTESTER_KEY) return false; // not armed yet — by design
   let viem, accounts, chains;
   try {
     viem = await import("viem");
     accounts = await import("viem/accounts");
     chains = await import("viem/chains");
   } catch {
-    return; // library unavailable: never block the heartbeat
+    return false; // library unavailable: never block the heartbeat
   }
 
   const today = utcDay();
@@ -367,6 +367,7 @@ async function coherenceAttestClosedDay(env) {
   // Explicit nonce: multiple seals in one run must not collide on a stale nonce.
   let nonce = await pub.getTransactionCount({ address: account.address });
 
+  let complete = true; // false if any closed day is left unsealed this run
   let sealedThisRun = 0;
   const MAX_SEALS_PER_RUN = 12; // safety cap for CPU / subrequest limits
 
@@ -381,7 +382,7 @@ async function coherenceAttestClosedDay(env) {
       .filter((day) => day < today) // YYYY-MM-DD compares lexicographically
       .sort();
     for (const day of days) {
-      if (sealedThisRun >= MAX_SEALS_PER_RUN) return;
+      if (sealedThisRun >= MAX_SEALS_PER_RUN) return false; // more days remain — retry next tick
       const sealKey = `sealed:${p.id}:${day}`;
       if (await env.COHERENCE.get(sealKey)) continue; // already attested
       const dayDoc = await env.COHERENCE.get(`${prefix}${day}`);
@@ -430,10 +431,14 @@ async function coherenceAttestClosedDay(env) {
         await env.COHERENCE.put(sealKey, hash, { expirationTtl: 120 * 86400 });
         await env.COHERENCE.put(`txlast:${p.id}`, JSON.stringify({ day, hash }));
       } catch {
-        // RPC/gas hiccup: leave unsealed, retry on the next run (now it truly does).
+        // RPC/gas hiccup: leave this day unsealed AND mark the run incomplete, so
+        // the outer daily gate keeps retrying every 10 min instead of waiting a
+        // full day (per-day idempotency still prevents any double-seal).
+        complete = false;
       }
     }
   }
+  return complete;
 }
 
 // One-shot "genesis" seal: attest the real cumulative window observed so far
@@ -867,6 +872,17 @@ export default {
       return json(await coherenceAttestGenesis(env));
     }
 
+    // Manual catch-up seal, token-gated. Forces a closed-day seal run on demand —
+    // e.g. to recover a day whose tx failed transiently — without waiting for the
+    // daily gate. Idempotent (per-day sealKey), so it is safe to call repeatedly.
+    if (url.pathname === "/coherence/seal" && request.method === "POST") {
+      if (!env.SEAL_TOKEN) return json({ error: "not found" }, 404);
+      if (url.searchParams.get("token") !== env.SEAL_TOKEN) return json({ error: "forbidden" }, 403);
+      const complete = await coherenceAttestClosedDay(env);
+      if (complete) await env.COHERENCE.put("attest:lastRun", utcDay());
+      return json({ ok: true, complete, ...(await coherenceReport(env)) });
+    }
+
     if (url.pathname !== "/mcp") return json({ error: "not found — MCP endpoint is /mcp" }, 404);
 
     // Stateless server: no SSE stream to resume. Spec-permitted response.
@@ -909,10 +925,11 @@ export default {
         const today = utcDay();
         const marker = await env.COHERENCE.get("attest:lastRun");
         if (marker !== today) {
-          // Seal first, then advance the marker — so a fully-failed run retries
-          // on the next tick (per-day idempotency prevents any double-seal).
-          await coherenceAttestClosedDay(env);
-          await env.COHERENCE.put("attest:lastRun", today);
+          // Advance the marker ONLY when every closed day is sealed. A partial
+          // failure (one promise's tx fails) leaves the marker behind, so the very
+          // next 10-min tick retries the missing seal instead of waiting a day.
+          const done = await coherenceAttestClosedDay(env);
+          if (done) await env.COHERENCE.put("attest:lastRun", today);
         }
       }
     })();
