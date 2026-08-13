@@ -17,6 +17,8 @@
 
 ⚡ **Copy-paste starter examples:** [`examples/`](examples/) — [ElizaOS](examples/elizaos.md) · [AgentKit / TypeScript](examples/agentkit.ts) · [Claude / any MCP client](examples/claude.md) — each with the recommended treasury-policy system prompt and safe-default security env.
 
+▶️ **Runnable full-cycle demo** (read-only, no keys): `npx tsx examples/full-cycle.ts` — live against Base: treasury state → risk regime → attestation verified offline → invest calldata → JIT redemption calldata. [Source](examples/full-cycle.ts).
+
 🌐 **Hosted MCP (Streamable HTTP, no install):** `https://gblin-mcp.gblin-mcp-worker.workers.dev/mcp` — 6 free read-only tools (live risk regime, attestation sample, agent-economy stats, protocol info, and the **Coherence Proof** report), also on [Smithery](https://smithery.ai/servers/gblin-protocol/mcp). Source in [`worker/`](worker/).
 
 ---
