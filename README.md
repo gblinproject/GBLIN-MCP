@@ -15,13 +15,15 @@
 
 📖 **Full documentation and Quick Start:** [gblin.digital/agents](https://gblin.digital/agents)
 
-🌐 **Hosted MCP (Streamable HTTP, no install):** `https://gblin-mcp.gblin-mcp-worker.workers.dev/mcp` — free read-only tools (live risk regime, attestation sample, stats), also on [Smithery](https://smithery.ai/servers/gblin-protocol/mcp). Source in [`worker/`](worker/).
+⚡ **Copy-paste starter examples:** [`examples/`](examples/) — [ElizaOS](examples/elizaos.md) · [AgentKit / TypeScript](examples/agentkit.ts) · [Claude / any MCP client](examples/claude.md) — each with the recommended treasury-policy system prompt and safe-default security env.
+
+🌐 **Hosted MCP (Streamable HTTP, no install):** `https://gblin-mcp.gblin-mcp-worker.workers.dev/mcp` — 6 free read-only tools (live risk regime, attestation sample, agent-economy stats, protocol info, and the **Coherence Proof** report), also on [Smithery](https://smithery.ai/servers/gblin-protocol/mcp). Source in [`worker/`](worker/).
 
 ---
 
 ## ElizaOS Plugin
 
-For agents running on **ElizaOS**, install the companion plugin:
+For agents running on **ElizaOS**, install the companion plugin — now listed in the **official ElizaOS plugin registry** (v0.4.0, security-hardened):
 
 ```bash
 npm install plugin-gblin
@@ -31,6 +33,16 @@ npm install plugin-gblin
 It exposes four native Actions (`CHECK_GBLIN_TREASURY_HEALTH`, `INVEST_IDLE_USDC_GBLIN`, `RESCUE_USDC_FROM_GBLIN`, `GET_GBLIN_RISK_ATTESTATION`) and a Provider that injects live NAV + Crash Shield status into the agent context on every loop.
 
 → [Full Eliza plugin docs](https://github.com/gblinproject/GBLIN_PLUGIN)
+
+---
+
+## Coherence Proof — verify GBLIN keeps its promises
+
+GBLIN pre-registers hash-pinned public promises, then runs an automaton that probes them every 10 minutes and seals each closed day as an [EAS attestation](https://base.easscan.org/schema/view/0x9f433a96467ab75530009970e5aa938ec94d8a49f08f66e7381822d557b448ef) on Base. Reading is free forever; the paid service is being observed — the certifier submits itself to its own instrument first.
+
+- **Free report:** [`/coherence`](https://gblin-mcp.gblin-mcp-worker.workers.dev/coherence) (JSON) or the `get_coherence_report` tool on the hosted MCP.
+- **Live promises:** P1 (uptime of the paid Risk Attestation endpoint) and P2 (honesty of the public agent-economy counters, with our own wallets disclosed and excluded).
+- **On-chain:** each closed day is sealed as an EAS attestation on Base by a dedicated observer wallet. GBLIN is a discoverable ERC-8004 agent (#59286).
 
 ---
 
