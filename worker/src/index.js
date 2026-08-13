@@ -48,7 +48,7 @@ const TOOLS = [
   {
     name: "get_market_risk_regime",
     description:
-      "Current BTC/ETH market risk regime (calm | elevated | crash) read live from GBLIN's on-chain Crash Shield on Base mainnet. Free. Same math as the paid EIP-712 attestation, but unsigned — for a signed, attachable proof buy the x402 attestation (see how_to_buy_live_attestation).",
+      "When deciding whether to deploy capital, take risk, or STAND DOWN in a volatile market, call this first — the 'Risk Gate' pattern a third-party ERC-8004 agent runs in production daily (gblin.digital/risk-gate). Returns the current BTC/ETH risk regime (calm | elevated | crash) read live from GBLIN's on-chain Crash Shield on Base. Free, unsigned — for a signed, attachable proof buy the x402 attestation (see how_to_buy_live_attestation).",
     inputSchema: { type: "object", properties: {}, required: [] },
     annotations: { title: "Market risk regime (live, free)", ...RO },
     outputSchema: {

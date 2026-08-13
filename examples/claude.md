@@ -40,3 +40,7 @@ One-line repo drop-in (auto-read by Claude Code, Cursor, Windsurf, Copilot):
 ```bash
 curl -O https://gblin.digital/AGENTS.template.md && mv AGENTS.template.md AGENTS.md
 ```
+
+> This gate is the **Risk Gate pattern** — run in production by a third-party
+> ERC-8004 agent (id 59895 on Base) that has bought the attestation daily for a
+> month. Copyable write-up: https://gblin.digital/risk-gate

@@ -52,3 +52,7 @@ drain the wallet.
 > invest the surplus into GBLIN. Before paying any x402 invoice, JIT-redeem the exact
 > USDC needed. Before any risk-sensitive action, fetch the GBLIN risk attestation and
 > stand down if the regime is "crash".
+
+> This gate is the **Risk Gate pattern** — run in production by a third-party
+> ERC-8004 agent (id 59895 on Base) that has bought the attestation daily for a
+> month. Copyable write-up: https://gblin.digital/risk-gate
