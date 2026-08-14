@@ -10,6 +10,11 @@
  *
  * Design constraints (Workers free plan):
  *   - 100k requests/day, 10 ms CPU per invocation. All tools are either
+ *
+ * 14/08/2026: aggiunto l'OSSERVATORIO DEL CATALOGO (src/catalog.mjs) — sonde a
+ * rotazione sulle top-200 risorse del discovery x402, vista free su /catalog,
+ * feed completo via token per la webapp (che lo vende via x402). Il giro di
+ * sonde SALTA il tick del sigillo giornaliero per stare nei 50 subrequest.
  *     cached upstream fetches (I/O, ~0 CPU) or tiny hex parsing.
  *   - Stateless: no sessions, no SSE stream, one JSON response per POST.
  *     Every JSON-RPC exchange is self-contained (spec-permitted mode).
@@ -18,6 +23,8 @@
  *   - Kill switch: env.MCP_DISABLED = "true" → 503 for everything.
  *   - Best-effort per-IP rate limit (per isolate): 60 req/min.
  */
+
+import { catalogTick, catalogReport, catalogFull } from "./catalog.mjs";
 
 const GBLIN = "0x36C81d7E1966310F305eA637e761Cf77F90852f0";
 const BASKET_SELECTOR = "0x8c7e0875"; // basket(uint256)
@@ -863,6 +870,28 @@ export default {
       return json(await coherenceReport(env));
     }
 
+    // Regime GRATUITO via REST (stessa matematica del tool MCP, cache 60s):
+    // pensato per i provider dei plugin che girano a OGNI loop degli agenti.
+    // Free tier: mai conteggiato nei contatori "paid" (promessa P2).
+    if (url.pathname === "/regime" && request.method === "GET") {
+      const regime = await cachedRegime(env);
+      return json({
+        ...regime,
+        note: "Free unsigned reading, 60s cache. For a signed, offline-verifiable proof: gblin.digital/api/x402/attestation ($0.003). Risk Gate pattern: gblin.digital/risk-gate",
+      });
+    }
+
+    // Osservatorio del catalogo x402 — vista FREE (aggregati + nostre risorse).
+    if (url.pathname === "/catalog" && request.method === "GET") {
+      return json(await catalogReport(env));
+    }
+    // Feed completo per la webapp (che lo firma e lo vende via x402).
+    if (url.pathname === "/catalog/full" && request.method === "GET") {
+      const full = await catalogFull(env, url.searchParams.get("token"));
+      if (!full) return json({ error: "forbidden" }, 403);
+      return json(full);
+    }
+
     // One-shot genesis seal, token-gated. Writes the first on-chain proof on
     // demand (also an end-to-end test of the signing path). Idempotent: refuses
     // once genesis is done. No token configured → 404 (feature stays invisible).
@@ -930,6 +959,10 @@ export default {
           // next 10-min tick retries the missing seal instead of waiting a day.
           const done = await coherenceAttestClosedDay(env);
           if (done) await env.COHERENCE.put("attest:lastRun", today);
+        } else {
+          // Giro di sonde del catalogo SOLO nei tick senza sigillo: il budget
+          // free è 50 subrequest/invocazione e il sigillo ne consuma parecchi.
+          await catalogTick(env).catch((e) => console.error("catalog:", e.message));
         }
       }
     })();
