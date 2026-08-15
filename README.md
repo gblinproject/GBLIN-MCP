@@ -1,6 +1,9 @@
 # GBLIN MCP Server
 
-> **Treasury standard for AI agents on Base mainnet.** A Model Context Protocol (MCP) server that lets autonomous agents hold capital in GBLIN — a diversified, Crash-Shield-protected on-chain index — and Just-In-Time swap to USDC the millisecond they need to pay an [x402](https://docs.cdp.coinbase.com/x402/welcome) invoice.
+> **Market risk regime and treasury tools for AI agents on Base mainnet.** A Model Context Protocol (MCP) server that answers two questions an autonomous agent has to ask before it moves money:
+>
+> 1. **Is the market risk-off right now?** Read the live regime — `calm` | `elevated` | `crash` — derived from an on-chain Crash Shield. **Free, no API key, no wallet.** If you need to prove to a counterparty that you checked, buy a signed EIP-712 **risk attestation** as portable proof-of-diligence.
+> 2. **Where does idle USDC sit between jobs?** In GBLIN, a collateral-backed cbBTC/WETH/USDC index that mints and redeems at NAV, with a Just-In-Time swap back to USDC the millisecond the agent needs to pay an [x402](https://docs.cdp.coinbase.com/x402/welcome) invoice. No lockup, unsigned calldata only — your wallet signs, we never hold keys.
 
 [![npm](https://img.shields.io/npm/v/@gblin-protocol/mcp-server.svg)](https://www.npmjs.com/package/@gblin-protocol/mcp-server)
 [![CI](https://github.com/gblinproject/GBLIN-MCP/actions/workflows/ci.yml/badge.svg)](https://github.com/gblinproject/GBLIN-MCP/actions/workflows/ci.yml)
