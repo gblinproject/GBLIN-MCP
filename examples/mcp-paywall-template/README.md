@@ -61,6 +61,6 @@ MIT. Fork freely.
 
 ## Related
 
-- GBLIN MCP server: https://github.com/gblinproject/GBLIN-MCP
+- GBLIN MCP server: https://github.com/gblinproject/gblin-treasury-risk-regime
 - x402 spec: https://www.x402.org
 - Skills for treasury patterns: see `../../skills/`

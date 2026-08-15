@@ -69,7 +69,7 @@ that gates on a fresh attestation re-fetches every cycle.
 
 ## Links
 
-- Source: https://github.com/gblinproject/GBLIN-MCP
+- Source: https://github.com/gblinproject/gblin-treasury-risk-regime
 - Docs: https://gblin.digital/agents
 - Contract: https://basescan.org/address/0x36C81d7E1966310F305eA637e761Cf77F90852f0
 - Network: Base mainnet (chain id 8453)

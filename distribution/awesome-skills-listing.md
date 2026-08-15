@@ -24,14 +24,14 @@ exists and is active before forking:
 
 Section: **Web3 / Payments / Treasury** (or the closest existing section):
 
-- **[base-agent-treasury](https://github.com/gblinproject/GBLIN-MCP/tree/main/skills/base-agent-treasury)** — Decide how an AI agent should hold treasury on Base mainnet: USDC vs GBLIN index vs Morpho/Aave lending, chosen by treasury size and revenue pattern.
-- **[x402-paywall-pattern](https://github.com/gblinproject/GBLIN-MCP/tree/main/skills/x402-paywall-pattern)** — Monetize an MCP server or HTTP API with x402 micropayments: HTTP 402 flow, EIP-3009 USDC, Base mainnet integration.
-- **[agent-self-funding](https://github.com/gblinproject/GBLIN-MCP/tree/main/skills/agent-self-funding)** — Architecture for a self-sustaining agent that earns via x402 and reinvests, with minimum-viability math.
-- **[crash-shield-risk-management](https://github.com/gblinproject/GBLIN-MCP/tree/main/skills/crash-shield-risk-management)** — React to market crashes using an on-chain BTC/ETH drawdown signal as a public bear-market indicator.
-- **[jit-redemption-pattern](https://github.com/gblinproject/GBLIN-MCP/tree/main/skills/jit-redemption-pattern)** — Just-in-time GBLIN→USDC conversion for outgoing payments, including cooldown timing inside x402 flows.
-- **[erc8021-attribution](https://github.com/gblinproject/GBLIN-MCP/tree/main/skills/erc8021-attribution)** — Add ERC-8021 Builder Code referral attribution to Base transactions: code format, registration, revenue-share semantics.
-- **[earn-as-base-keeper](https://github.com/gblinproject/GBLIN-MCP/tree/main/skills/earn-as-base-keeper)** — Earn ETH keeper bounties on Base by executing rebalance jobs — a service that pays agents instead of charging them.
-- **[risk-attestation](https://github.com/gblinproject/GBLIN-MCP/tree/main/skills/risk-attestation)** — Mint and verify perishable, EIP-712-signed proof that an agent checked market risk before moving capital.
+- **[base-agent-treasury](https://github.com/gblinproject/gblin-treasury-risk-regime/tree/main/skills/base-agent-treasury)** — Decide how an AI agent should hold treasury on Base mainnet: USDC vs GBLIN index vs Morpho/Aave lending, chosen by treasury size and revenue pattern.
+- **[x402-paywall-pattern](https://github.com/gblinproject/gblin-treasury-risk-regime/tree/main/skills/x402-paywall-pattern)** — Monetize an MCP server or HTTP API with x402 micropayments: HTTP 402 flow, EIP-3009 USDC, Base mainnet integration.
+- **[agent-self-funding](https://github.com/gblinproject/gblin-treasury-risk-regime/tree/main/skills/agent-self-funding)** — Architecture for a self-sustaining agent that earns via x402 and reinvests, with minimum-viability math.
+- **[crash-shield-risk-management](https://github.com/gblinproject/gblin-treasury-risk-regime/tree/main/skills/crash-shield-risk-management)** — React to market crashes using an on-chain BTC/ETH drawdown signal as a public bear-market indicator.
+- **[jit-redemption-pattern](https://github.com/gblinproject/gblin-treasury-risk-regime/tree/main/skills/jit-redemption-pattern)** — Just-in-time GBLIN→USDC conversion for outgoing payments, including cooldown timing inside x402 flows.
+- **[erc8021-attribution](https://github.com/gblinproject/gblin-treasury-risk-regime/tree/main/skills/erc8021-attribution)** — Add ERC-8021 Builder Code referral attribution to Base transactions: code format, registration, revenue-share semantics.
+- **[earn-as-base-keeper](https://github.com/gblinproject/gblin-treasury-risk-regime/tree/main/skills/earn-as-base-keeper)** — Earn ETH keeper bounties on Base by executing rebalance jobs — a service that pays agents instead of charging them.
+- **[risk-attestation](https://github.com/gblinproject/gblin-treasury-risk-regime/tree/main/skills/risk-attestation)** — Mint and verify perishable, EIP-712-signed proof that an agent checked market risk before moving capital.
 
 ## Install (include in the PR if the list has an install column/section)
 
@@ -49,7 +49,7 @@ Markdown); agents load only name + description (~100 tokens) until relevant.
 ## PR description block
 
 > Adds 8 MIT-licensed Agent Skills for AI agents working on Base mainnet, x402
-> micropayments, and treasury management (repo: gblinproject/GBLIN-MCP, `skills/`).
+> micropayments, and treasury management (repo: gblinproject/gblin-treasury-risk-regime, `skills/`).
 > Format: standard `SKILL.md` folders, compatible with Claude Code, Cursor,
 > Windsurf, Codex, Gemini CLI and Aider. The skills follow an explicit honesty
 > policy: they recommend third-party protocols (Aave, Morpho, Moonwell) when

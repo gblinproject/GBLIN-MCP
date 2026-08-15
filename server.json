@@ -3,7 +3,7 @@
   "name": "io.github.gblinproject/gblin-treasury-risk-regime",
   "description": "Risk regime + treasury for AI agents on Base: free regime reads, signed attestations, idle USDC.",
   "repository": {
-    "url": "https://github.com/gblinproject/GBLIN-MCP",
+    "url": "https://github.com/gblinproject/gblin-treasury-risk-regime",
     "source": "github"
   },
   "version": "0.2.7",

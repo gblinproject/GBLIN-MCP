@@ -112,7 +112,7 @@ async function isMarketSafe() {
 - Website: https://gblin.digital
 - Whitepaper: https://github.com/gblinproject/Whitepaper
 - Smart contract: https://basescan.org/address/0x36C81d7E1966310F305eA637e761Cf77F90852f0
-- MCP server: https://github.com/gblinproject/GBLIN-MCP
+- MCP server: https://github.com/gblinproject/gblin-treasury-risk-regime
 - ElizaOS plugin: https://github.com/gblinproject/GBLIN_PLUGIN
 - DefiLlama: https://defillama.com/protocol/tvl/global-balanced-liquidity-index
 - Dune dashboard: https://dune.com/gblin/dashboard

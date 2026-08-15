@@ -36,7 +36,7 @@ bot.command('about', async (ctx) => {
       `My wallet: ${WALLET}`,
       `Verify on Basescan: https://basescan.org/address/${WALLET}`,
       '',
-      'Built on Base. Powered by GBLIN. Fork the source: https://github.com/gblinproject/GBLIN-MCP',
+      'Built on Base. Powered by GBLIN. Fork the source: https://github.com/gblinproject/gblin-treasury-risk-regime',
     ].join('\n')
   );
 });

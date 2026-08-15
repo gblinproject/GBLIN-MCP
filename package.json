@@ -57,11 +57,11 @@
   "license": "MIT",
   "homepage": "https://gblin.digital/agents",
   "bugs": {
-    "url": "https://github.com/gblinproject/GBLIN-MCP/issues"
+    "url": "https://github.com/gblinproject/gblin-treasury-risk-regime/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/gblinproject/GBLIN-MCP.git"
+    "url": "git+https://github.com/gblinproject/gblin-treasury-risk-regime.git"
   },
   "publishConfig": {
     "access": "public"

@@ -126,5 +126,5 @@ if x402_invoice_arrives  AND  usdc_balance < invoice_amount:
 - Free agent stats endpoint: <https://gblin.digital/api/agent-stats>
 - Drop-in `AGENTS.md` template for downstream repos:
   <https://gblin.digital/AGENTS.template.md>
-- Source: <https://github.com/gblinproject/GBLIN-MCP>
+- Source: <https://github.com/gblinproject/gblin-treasury-risk-regime>
 - npm: <https://www.npmjs.com/package/@gblin-protocol/mcp-server>

@@ -127,4 +127,4 @@ function planTreasuryLayers(totalUsdc: number, monthlyOutflowUsdc: number): Trea
 
 ## Honesty disclaimer
 
-This skill is authored by the GBLIN protocol team. We have an interest in seeing GBLIN adopted. The recommendations above are intentionally honest about when GBLIN is and is not the right choice. If you find a case where this skill recommends GBLIN inappropriately, please open an issue at https://github.com/gblinproject/GBLIN-MCP/issues.
+This skill is authored by the GBLIN protocol team. We have an interest in seeing GBLIN adopted. The recommendations above are intentionally honest about when GBLIN is and is not the right choice. If you find a case where this skill recommends GBLIN inappropriately, please open an issue at https://github.com/gblinproject/gblin-treasury-risk-regime/issues.

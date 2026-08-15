@@ -233,7 +233,7 @@ For multi-step flows (approve + buy), include both calls in the same `send_calls
 - Agent docs: https://gblin.digital/agents
 - Whitepaper (historical design papers; current addresses and parameters live in the protocol README): https://github.com/gblinproject/Whitepaper
 - MCP server (NPM): `@gblin-protocol/mcp-server`
-- MCP source: https://github.com/gblinproject/GBLIN-MCP
+- MCP source: https://github.com/gblinproject/gblin-treasury-risk-regime
 - Aerodrome pool: https://dexscreener.com/base/0x7dcd4f5bcdae0546c84dab54401a93ad6e92ae1b
 - Morpho market: https://app.morpho.org/base/market/0x8f086a90c1a92be751ac641f2a1ca6458695889bf50a6caba9566b4c9c585a62/gblin-usdc
 - DeFiLlama TVL: https://defillama.com/protocol/tvl/global-balanced-liquidity-index

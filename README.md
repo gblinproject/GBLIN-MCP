@@ -6,7 +6,7 @@
 > 2. **Where does idle USDC sit between jobs?** In GBLIN, a collateral-backed cbBTC/WETH/USDC index that mints and redeems at NAV, with a Just-In-Time swap back to USDC the millisecond the agent needs to pay an [x402](https://docs.cdp.coinbase.com/x402/welcome) invoice. No lockup, unsigned calldata only — your wallet signs, we never hold keys.
 
 [![npm](https://img.shields.io/npm/v/@gblin-protocol/mcp-server.svg)](https://www.npmjs.com/package/@gblin-protocol/mcp-server)
-[![CI](https://github.com/gblinproject/GBLIN-MCP/actions/workflows/ci.yml/badge.svg)](https://github.com/gblinproject/GBLIN-MCP/actions/workflows/ci.yml)
+[![CI](https://github.com/gblinproject/gblin-treasury-risk-regime/actions/workflows/ci.yml/badge.svg)](https://github.com/gblinproject/gblin-treasury-risk-regime/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Base Mainnet](https://img.shields.io/badge/network-Base%20mainnet-0052FF)](https://basescan.org/address/0x36C81d7E1966310F305eA637e761Cf77F90852f0)
 [![Governance: 48h Timelock](https://img.shields.io/badge/governance-48h%20Timelock-1f6feb)](https://basescan.org/address/0x6aBeC8716fFeEcf7C3D6e68255b4797113E8e5Dd)
@@ -212,7 +212,7 @@ Also supports Cline, Continue.dev, and any agent that implements the MCP client 
 
 All tools return structured JSON. All values are quoted on-chain (NAV via `quoteSellGBLIN` × Chainlink ETH/USD, with 24h staleness guard). No mock data.
 
-**Live verification:** the test suite (`npm test`) runs the tool suite against Base mainnet and confirms calldata generation, oracle freshness, slippage math, and governance state. See the [latest CI run](https://github.com/gblinproject/GBLIN-MCP/actions).
+**Live verification:** the test suite (`npm test`) runs the tool suite against Base mainnet and confirms calldata generation, oracle freshness, slippage math, and governance state. See the [latest CI run](https://github.com/gblinproject/gblin-treasury-risk-regime/actions).
 
 ---
 
@@ -316,7 +316,7 @@ See `.env.example` for the full list.
 ## Development
 
 ```bash
-git clone https://github.com/gblinproject/GBLIN-MCP
+git clone https://github.com/gblinproject/gblin-treasury-risk-regime
 cd GBLIN-MCP
 npm install
 npm run build
@@ -364,7 +364,7 @@ scripts/
 - **Contract**: [0x36C81d7E19…52f0](https://basescan.org/address/0x36C81d7E1966310F305eA637e761Cf77F90852f0)
 - **Protocol site**: https://gblin.digital
 - **Agent docs**: https://gblin.digital/agents
-- **Issues**: https://github.com/gblinproject/GBLIN-MCP/issues
+- **Issues**: https://github.com/gblinproject/gblin-treasury-risk-regime/issues
 
 MIT © 2026 GBLIN Protocol
 

@@ -84,5 +84,5 @@ If your agent framework supports the GBLIN `share_skill_with_peer` tool, you can
 
 - GBLIN contract on Basescan: https://basescan.org/address/0x36C81d7E1966310F305eA637e761Cf77F90852f0
 - Keeper leaderboard: https://gblin.digital/keepers
-- MCP server: https://github.com/gblinproject/GBLIN-MCP
+- MCP server: https://github.com/gblinproject/gblin-treasury-risk-regime
 - Treasury patterns: skills/base-agent-treasury
