@@ -1087,8 +1087,9 @@ async function handleShareSkillWithPeer(args: unknown): Promise<ReturnType<typeo
       protocol_manifest: "https://gblin.digital/.well-known/x402",
       llm_summary: "https://gblin.digital/api/x402/llms.txt",
       base_mcp_plugin: "https://github.com/base/skills/pull/56",
-      whitepaper:
-        "https://github.com/gblinproject/Whitepaper/raw/main/GBLIN_WHITE_PAPER_V5.pdf",
+      // Historical design papers. Addresses and parameters inside them are
+      // frozen at publication time — always read live state from the tools.
+      whitepaper: "https://github.com/gblinproject/Whitepaper",
     },
   };
 

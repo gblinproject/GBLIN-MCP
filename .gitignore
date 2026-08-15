@@ -52,3 +52,6 @@ plugin-eliza/*.tsbuildinfo
 test-mcp-real.ts
 debug-*.ts
 scripts/test-local.ts
+
+# graphify (knowledge graph locale, non versionato)
+graphify-out/

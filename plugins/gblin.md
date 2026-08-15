@@ -9,15 +9,15 @@
 >
 > Do NOT skip this step. The user's wallet address is needed for every transaction.
 
-GBLIN (Global Balanced Liquidity Index) is a **wealth-preservation protocol on Base mainnet**. Every GBLIN token is fully backed by a real treasury of cbBTC (45%), WETH (45%), and USDC (10%), governed by Chainlink oracles and a 48-hour timelock. It is not a meme coin — it is a decentralised index with an algorithmic Crash Shield that reallocates toward USDC as basket assets draw down (V6 adaptive threshold, from ~15%).
+GBLIN (Global Balanced Liquidity Index) is a **wealth-preservation protocol on Base mainnet**. Every GBLIN token is fully backed by a real treasury of cbBTC, WETH and USDC, priced by Chainlink oracles and governed by a 48-hour timelock. Basket weights are set on-chain and rebalance over time — read them live from `get_treasury_state` rather than assuming fixed percentages. It is not a meme coin: it is an index with an algorithmic Crash Shield that reallocates toward USDC as basket assets draw down (adaptive threshold, from ~15%).
 
 This plugin fetches unsigned calldata from the GBLIN MCP server (`@gblin-protocol/mcp-server`), then executes via Base MCP's `send_calls`.
 
 **Supported chain:** Base mainnet (`8453` / `0x2105`).
 
-**Contract (V6, production):** `0x36C81d7E1966310F305eA637e761Cf77F90852f0`
+**Contract (production):** `0x36C81d7E1966310F305eA637e761Cf77F90852f0`
 
-**Timelock (owner since 18 May 2026):** `0x6aBeC8716fFeEcf7C3D6e68255b4797113E8e5Dd` — 48h delay, immutable.
+**Timelock (owner):** `0x6aBeC8716fFeEcf7C3D6e68255b4797113E8e5Dd` — every owner-only change is scheduled and executes only after a 48h delay. Parameters can change through it, so never describe the protocol as immutable.
 
 ---
 
@@ -219,7 +219,7 @@ For multi-step flows (approve + buy), include both calls in the same `send_calls
 
 | Asset | Address |
 |-------|---------|
-| GBLIN V6 contract | `0x36C81d7E1966310F305eA637e761Cf77F90852f0` |
+| GBLIN contract | `0x36C81d7E1966310F305eA637e761Cf77F90852f0` |
 | GBLIN Timelock | `0x6aBeC8716fFeEcf7C3D6e68255b4797113E8e5Dd` |
 | USDC (Base) | `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` |
 | WETH (Base) | `0x4200000000000000000000000000000000000006` |
@@ -231,7 +231,7 @@ For multi-step flows (approve + buy), include both calls in the same `send_calls
 
 - Website & docs: https://gblin.digital
 - Agent docs: https://gblin.digital/agents
-- Whitepaper: https://github.com/gblinproject/Whitepaper/raw/main/GBLIN_WHITE_PAPER_V5.pdf
+- Whitepaper (historical design papers; current addresses and parameters live in the protocol README): https://github.com/gblinproject/Whitepaper
 - MCP server (NPM): `@gblin-protocol/mcp-server`
 - MCP source: https://github.com/gblinproject/GBLIN-MCP
 - Aerodrome pool: https://dexscreener.com/base/0x7dcd4f5bcdae0546c84dab54401a93ad6e92ae1b
