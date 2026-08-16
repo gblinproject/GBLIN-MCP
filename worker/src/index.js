@@ -24,7 +24,7 @@
  *   - Best-effort per-IP rate limit (per isolate): 60 req/min.
  */
 
-import { catalogTick, catalogReport, catalogFull } from "./catalog.mjs";
+import { catalogTick, catalogReport, catalogFull, observatoryPage, observatoryJson, observatoryBadge } from "./catalog.mjs";
 
 const GBLIN = "0x36C81d7E1966310F305eA637e761Cf77F90852f0";
 const BASKET_SELECTOR = "0x8c7e0875"; // basket(uint256)
@@ -878,6 +878,21 @@ export default {
       return json({
         ...regime,
         note: "Free unsigned reading, 60s cache. For a signed, offline-verifiable proof: gblin.digital/api/x402/attestation ($0.003). Risk Gate pattern: gblin.digital/risk-gate",
+      });
+    }
+
+    // OSSERVATORIO PUBBLICO — artefatto citabile: pagina, JSON stabile, badge.
+    if (url.pathname === "/observatory" && request.method === "GET") {
+      return new Response(await observatoryPage(env), {
+        headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=600", ...CORS },
+      });
+    }
+    if (url.pathname === "/observatory.json" && request.method === "GET") {
+      return json(await observatoryJson(env), 200, { "cache-control": "public, max-age=600" });
+    }
+    if (url.pathname === "/observatory/badge.svg" && request.method === "GET") {
+      return new Response(await observatoryBadge(env, url.searchParams.get("host")), {
+        headers: { "content-type": "image/svg+xml", "cache-control": "public, max-age=600", ...CORS },
       });
     }
 
