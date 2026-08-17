@@ -168,7 +168,7 @@ const TOOLS = [
   {
     name: "get_coherence_report",
     description:
-      "Coherence Proof (free, forever): does this subject DO what it publicly promised? v0 observes GBLIN itself — pre-registered, hash-pinned promises (uptime of the paid attestation endpoint, honesty of public counters) probed every 10 minutes, with kept/violated tallies. The certifier submits itself to its own instrument first. Reading is free by design; being observed is the paid service.",
+      "Coherence Proof (free, forever): does this subject DO what it publicly promised? v0 observes GBLIN itself — pre-registered, hash-pinned promises (uptime of the paid attestation endpoint, honesty of public counters) probed every 10 minutes, with kept/violated tallies; each closed UTC day is sealed on Base as an EAS attestation (schema 0x9f433a96…, verifiable on base.easscan.org). The certifier submits itself to its own instrument first. Reading is free by design; being observed is the paid service.",
     inputSchema: { type: "object", properties: {}, required: [] },
     annotations: { title: "Coherence report (promises vs conduct, free)", ...RO },
     outputSchema: {
@@ -776,7 +776,7 @@ async function handleMessage(msg, env) {
           capabilities: { tools: {} },
           serverInfo: SERVER_INFO,
           instructions:
-            "GBLIN Protocol — the Machine Reserve on Base. Free read-only tools; the signed risk attestation is a paid x402 endpoint (see how_to_buy_live_attestation). Stateless server: no session required.",
+            "GBLIN Protocol on Base: free read-only tools — live market risk regime (calm|elevated|crash), the x402 uptime observatory (only ~1/3 of the catalog answers; our own endpoints sit in the same table), and a Coherence Proof sealed daily on Base via EAS. The signed risk attestation is a paid x402 endpoint (see how_to_buy_live_attestation). Everything is checkable on-chain; reading is free. Stateless server: no session required.",
         });
       }
       case "ping":

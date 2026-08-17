@@ -216,6 +216,8 @@ export async function observatoryJson(env) {
     endpoints: rows,
     free_market_risk_regime: "https://gblin-mcp.gblin-mcp-worker.workers.dev/regime",
     operator: "gblin.digital (ERC-8004 agent #59286 on Base) — our own endpoints appear in the table under the same rules",
+    rerun_it_yourself: "https://github.com/gblinproject/x402-catalog-probe",
+    how_to_cite: "GBLIN x402 Uptime Observatory, <date>, https://gblin-mcp.gblin-mcp-worker.workers.dev/observatory",
   };
 }
 
@@ -243,7 +245,7 @@ tr.ours{background:#fffbe8}.k{color:#555}.box{background:#f6f6f6;border-radius:8
 <table><thead><tr><th></th><th>host</th><th>path</th><th>HTTP</th><th>ms</th><th>last OK (UTC)</th><th>fails</th></tr></thead><tbody>
 ${tr}
 </tbody></table>
-<p class="k">Reading is free forever. Data license: reuse with a link to this page. Contact: info@gblin.digital</p>
+<p class="k">Re-run it yourself: <a href="https://github.com/gblinproject/x402-catalog-probe">gblinproject/x402-catalog-probe</a> (one file, zero dependencies, same rules) — you may get a different number, and that is the point. Reading is free forever. Data license: reuse with a link to this page. How to cite: "GBLIN x402 Uptime Observatory, &lt;date&gt;, gblin-mcp.gblin-mcp-worker.workers.dev/observatory". Contact: info@gblin.digital</p>
 </body></html>`;
   return html;
 }
