@@ -200,13 +200,13 @@ Also supports Cline, Continue.dev, and any agent that implements the MCP client 
 | `share_skill_with_peer` | Generate a portable skill seed to onboard a peer agent + embedded referral code |
 | `verify_risk_attestation` | Verify a peer's **Risk Attestation** (perishable proof-of-diligence): integrity + EIP-712 signature + freshness + live drift (free) |
 
-### Paid tools (x402 micropayments)
+### More free tools
 
-| Tool | Price | Purpose |
-|---|---|---|
-| `get_market_risk_regime` | $0.002 USDC | **Start here**: BTC/ETH risk regime (calm/elevated/crash) + severity + risk posture, from the on-chain Crash Shield |
-| `analyze_treasury_health` | $0.003 USDC | Balances + gas + runway + rebalance advice |
-| `find_keeper_bounty` | $0.001 USDC | **GBLIN pays you**: check if a rebalance bounty is available (0.0001 ETH reward, no capital required) |
+| Tool | Purpose |
+|---|---|
+| `get_market_risk_regime` | **Start here**: BTC/ETH risk regime (calm/elevated/crash) + severity + risk posture, from the on-chain Crash Shield — free, no key |
+| `analyze_treasury_health` | Balances + gas + runway + rebalance advice |
+| `find_keeper_bounty` | **GBLIN pays you**: check if a rebalance bounty is available (no capital required, you only pay gas) |
 
 > **Risk Attestation** — mint a perishable (10-minute), verifiable proof of the current BTC/ETH risk regime at `GET https://gblin.digital/api/x402/attestation` ($0.003 USDC via x402). Attach it to your action as proof-of-diligence; any counterparty verifies it for free with `verify_risk_attestation`.
 
@@ -218,51 +218,28 @@ All tools return structured JSON. All values are quoted on-chain (NAV via `quote
 
 ## x402 micropayments
 
-The paid tools use the **x402 protocol** for instant micropayments. Here's how it works:
+**Every MCP tool is free.** The MCP server never charges: it is the discovery and read layer, and it
+monetizes only through the on-chain protocol fee (0.05% on mint) when an agent actually uses GBLIN.
 
-### Payment flow
+Verifiable pay-per-call lives on the **HTTP endpoints** instead, all on Base mainnet in USDC
+(`0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`), settled through the **Coinbase CDP facilitator**
+via gasless EIP-3009 `transferWithAuthorization`:
 
-1. **First call** (without payment): The tool returns a 402 manifest with payment details
-2. **Pay via facilitator**: Send a POST request to the facilitator with the payment details
-3. **Receive PaymentProof**: The facilitator returns a signed proof of payment
-4. **Second call** (with `_payment`): Include the base64-encoded PaymentProof in the `_payment` field
+| Endpoint | Price | What you get |
+|---|---|---|
+| `GET gblin.digital/api/x402/treasury-state` | $0.001 | NAV, basket weights, Crash Shield status |
+| `GET gblin.digital/api/x402/quote` | $0.001 | Safe swap preview with dynamic slippage |
+| `GET gblin.digital/api/x402/governance` | $0.001 | Owner = 48h timelock, pending operations |
+| `GET gblin.digital/api/x402/health` | $0.002 | Wallet balances, gas runway, rebalance advice |
+| `GET gblin.digital/api/x402/invest` | $0.002 | Unsigned calldata: USDC → GBLIN |
+| `GET gblin.digital/api/x402/jit` | $0.005 | Unsigned calldata: GBLIN → USDC just in time |
+| `GET gblin.digital/api/x402/attestation` | $0.003 | Signed EIP-712 **risk attestation** (10-minute proof-of-diligence) |
 
-### Example (analyze_treasury_health)
+Machine-readable manifest: `https://gblin.digital/.well-known/x402`. Recommended clients: `@x402/fetch`
+or `@x402/axios` (x402 v2 — they handle the 402 challenge, the signature and the retry for you).
+The MCP tool `verify_risk_attestation` checks any attestation offline, for free.
 
-```bash
-# Step 1: Get payment manifest
-npx @gblin-protocol/mcp-server analyze_treasury_health '{"wallet_address":"0x..."}'
-# Returns: 402 error with payment details
-
-# Step 2: Pay via facilitator
-curl -X POST https://facilitator.payai.network/pay \
-  -H "Content-Type: application/json" \
-  -d '{
-    "amount": "0.003",
-    "currency": "USDC", 
-    "recipient": "0x0ebA5d314F4f5Dcb7A094953Fa9311a45172dd1B",
-    "chainId": 8453
-  }'
-# Returns: PaymentProof JSON
-
-# Step 3: Call tool with payment
-npx @gblin-protocol/mcp-server analyze_treasury_health \
-  '{"wallet_address":"0x...", "_payment":"<base64 PaymentProof>"}'
-# Returns: Treasury analysis results
-```
-
-### Payment recipients
-
-- **Default recipient**: `0x0ebA5d314F4f5Dcb7A094953Fa9311a45172dd1B`
-- **Override**: Set `RECIPIENT_WALLET` environment variable to use your own wallet
-
-### Supported facilitators
-
-- **Primary**: `https://facilitator.payai.network` (PayAI — settles on Base mainnet, no auth)
-- **Override**: Set `X402_FACILITATOR_URL` environment variable
-- **Note**: `https://x402.org/facilitator` is testnet-only under x402 v2 and cannot settle Base mainnet payments
-
-All payments are processed on **Base mainnet** using USDC (0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913).
+**Payment recipient**: `0x0ebA5d314F4f5Dcb7A094953Fa9311a45172dd1B` (GBLIN fee wallet).
 
 ---
 
