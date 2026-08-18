@@ -248,16 +248,18 @@ function fullRows(state) {
 }
 
 export async function observatoryJson(env) {
-  let state = null;
+  let state = null, list = null;
   try { state = JSON.parse(await env.COHERENCE.get(STATE_KEY)); } catch { /* vuoto */ }
-  const rows = fullRows(state);
+  try { list = JSON.parse(await env.COHERENCE.get(LIST_KEY)); } catch { /* vuoto */ }
+  const inRotation = list?.urls?.length || Object.keys(state?.entries || {}).length;
+  const rows = fullRows(state).filter((r) => !list?.urls || list.urls.includes(r.url));
   const alive = rows.filter((r) => r.alive).length;
   return {
     name: "GBLIN x402 Uptime Observatory",
     generated_at: new Date(state?.updatedAt || Date.now()).toISOString(),
     stable_url: "https://gblin-mcp.gblin-mcp-worker.workers.dev/observatory.json",
     methodology: METHODOLOGY,
-    summary: { tracked: rows.length, alive_now: alive, alive_pct: rows.length ? Math.round((1000 * alive) / rows.length) / 10 : 0, in_rotation: Object.keys(state?.entries || {}).length, note: rows.length < Object.keys(state?.entries || {}).length ? "rule change in progress: only endpoints already re-probed under the current rule are counted; the rest re-enter within ~3h" : undefined },
+    summary: { tracked: rows.length, alive_now: alive, alive_pct: rows.length ? Math.round((1000 * alive) / rows.length) / 10 : 0, in_rotation: inRotation, note: rows.length < inRotation ? "rule change in progress: only endpoints already re-probed under the current rule are counted; the rest re-enter within ~3h" : undefined },
     endpoints: rows,
     free_market_risk_regime: "https://gblin-mcp.gblin-mcp-worker.workers.dev/regime",
     operator: "gblin.digital (ERC-8004 agent #59286 on Base) — our own endpoints appear in the table under the same rules",

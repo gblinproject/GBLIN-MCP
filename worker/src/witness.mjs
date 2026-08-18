@@ -219,6 +219,60 @@ export async function witnessTick(env, fetchImpl = fetch) {
   return out;
 }
 
+
+// ---------- push side: c2sp.org/tlog-witness (the LOG calls us) ----------
+// POST /witness/add-checkpoint   body = "old <size>\n" + proof lines (b64, one per line) + "\n" + <signed checkpoint note>
+// 200 → our cosignature line(s); 400 malformed; 403 unknown log / not signed by the pinned key;
+// 409 `old` ≠ the size we hold (body = our size, decimal + "\n"); 422 consistency proof invalid / tree shrank / fork.
+// Same KV state as the passive tick, so pushed and fetched checkpoints can never disagree.
+export async function witnessAddCheckpoint(env, bodyText) {
+  if (!env.COHERENCE || !env.WITNESS_KEY) return { status: 503, body: "witness not armed\n" };
+  let keyPair;
+  try { keyPair = parseWitnessSecret(env.WITNESS_KEY); } catch { return { status: 503, body: "witness not armed\n" }; }
+  const sep = bodyText.indexOf("\n\n");
+  if (sep < 0) return { status: 400, body: "malformed: no blank line between proof and checkpoint\n" };
+  const head = bodyText.slice(0, sep).split("\n");
+  const m = /^old (\d+)$/.exec(head[0] || "");
+  if (!m) return { status: 400, body: "malformed: first line must be 'old <size>'\n" };
+  const old = Number(m[1]);
+  let proof;
+  try { proof = head.slice(1).filter((l) => l.length > 0).map(unb64); } catch { return { status: 400, body: "malformed: proof lines must be base64\n" }; }
+  let note;
+  try { note = parseNote(bodyText.slice(sep + 2)); } catch (e) { return { status: 400, body: `malformed checkpoint: ${e.message}\n` }; }
+  const log = WITNESSED_LOGS.find((l) => l.origin === note.origin);
+  if (!log) return { status: 403, body: "unknown log\n" };
+  let sigOk = false;
+  try { sigOk = await verifyLogSignature(note, log.vkey); } catch { sigOk = false; }
+  if (!sigOk) return { status: 403, body: "checkpoint not signed by the pinned log key\n" };
+
+  const kLast = `witness:${log.id}:last`, kCount = `witness:${log.id}:count`, kErr = `witness:${log.id}:err`;
+  let prev = null;
+  try { prev = JSON.parse((await env.COHERENCE.get(kLast)) || "null"); } catch { prev = null; }
+  const held = prev ? prev.size : 0;
+  if (old !== held) return { status: 409, body: `${held}\n` };
+  if (prev) {
+    if (note.size < prev.size) return { status: 422, body: "tree shrank\n" };
+    if (note.size === prev.size) {
+      if (b64(note.root) !== prev.root) return { status: 422, body: "same size, different root\n" };
+      // nothing new: re-cosign the head we already hold (fresh timestamp)
+    } else if (!(await verifyConsistency(prev.size, note.size, unb64(prev.root), note.root, proof))) {
+      return { status: 422, body: "consistency proof invalid\n" };
+    }
+  } else if (proof.length !== 0) {
+    return { status: 400, body: "no proof expected for old 0\n" };
+  }
+  const { line, ts } = await cosign(note, keyPair);
+  if (!prev || note.size > prev.size) {
+    const text = bodyText.slice(sep + 2);
+    const cosignedNote = text.endsWith("\n") ? text + line + "\n" : text + "\n" + line + "\n";
+    await env.COHERENCE.put(kLast, JSON.stringify({ size: note.size, root: b64(note.root), ts, cosignedNote, firstSeen: prev?.firstSeen || ts, via: "push" }));
+    const count = Number((await env.COHERENCE.get(kCount)) || 0) + 1;
+    await env.COHERENCE.put(kCount, String(count));
+    await env.COHERENCE.delete(kErr);
+  }
+  return { status: 200, body: line + "\n" };
+}
+
 // ---------- public read side ----------
 export async function witnessIndex(env) {
   let verifierKey = null;
@@ -246,6 +300,7 @@ export async function witnessIndex(env) {
     cadence: "every 10 minutes (same heartbeat as the coherence automaton); unchanged tree size → no new signature",
     armed: !!verifierKey,
     logs,
+    push_endpoint: "POST /witness/add-checkpoint — c2sp.org/tlog-witness (body: 'old <size>', consistency proof lines, blank line, signed checkpoint; 200 = cosignature line, 409 = size we hold, 422 = proof invalid)",
     honest_note: "A cosignature says only: 'at this time we saw this tree head and it was consistent with the previous one we saw'. It is not an endorsement of the log's contents.",
   };
 }

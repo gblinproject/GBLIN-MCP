@@ -29,7 +29,7 @@ import { catalogTick, catalogReport, catalogFull, observatoryPage, observatoryJs
 // trasparenza terzi (C2SP tlog-cosignature v1). Primo log: markovianprotocol.com,
 // su loro invito. Zero costo: 1 lettura + 1 firma per tick; niente chain.
 // Secret WITNESS_KEY assente → disattivato in silenzio (fail-safe).
-import { witnessTick, witnessIndex, witnessLatestNote, WITNESSED_LOGS } from "./witness.mjs";
+import { witnessTick, witnessIndex, witnessLatestNote, witnessAddCheckpoint, WITNESSED_LOGS } from "./witness.mjs";
 
 const GBLIN = "0x36C81d7E1966310F305eA637e761Cf77F90852f0";
 const BASKET_SELECTOR = "0x8c7e0875"; // basket(uint256)
@@ -904,6 +904,12 @@ export default {
 
     // WITNESS — indice pubblico (chiave di verifica, ultimo checkpoint cofirmato per log)
     // e la nota cofirmata in chiaro, nel formato che qualsiasi verificatore C2SP legge.
+    if (url.pathname === "/witness/add-checkpoint" && request.method === "POST") {
+      const bodyText = await request.text();
+      if (bodyText.length > 65536) return new Response("too large\n", { status: 413 });
+      const r = await witnessAddCheckpoint(env, bodyText);
+      return new Response(r.body, { status: r.status, headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" } });
+    }
     if (url.pathname === "/witness" && request.method === "GET") {
       return json(await witnessIndex(env), 200, { "cache-control": "public, max-age=60" });
     }
