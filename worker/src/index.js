@@ -25,6 +25,11 @@
  */
 
 import { catalogTick, catalogReport, catalogFull, observatoryPage, observatoryJson, observatoryBadge } from "./catalog.mjs";
+// 18/08/2026: WITNESS (src/witness.mjs) — cofirma i checkpoint di log di
+// trasparenza terzi (C2SP tlog-cosignature v1). Primo log: markovianprotocol.com,
+// su loro invito. Zero costo: 1 lettura + 1 firma per tick; niente chain.
+// Secret WITNESS_KEY assente → disattivato in silenzio (fail-safe).
+import { witnessTick, witnessIndex, witnessLatestNote, WITNESSED_LOGS } from "./witness.mjs";
 
 const GBLIN = "0x36C81d7E1966310F305eA637e761Cf77F90852f0";
 const BASKET_SELECTOR = "0x8c7e0875"; // basket(uint256)
@@ -862,6 +867,7 @@ export default {
         tools: TOOLS.map((t) => t.name),
         stdio_twin: "npx @gblin-protocol/mcp-server (full toolset, free)",
         site: SITE,
+        witness: "/witness (we cosign third-party transparency-log checkpoints; C2SP tlog-cosignature v1)",
       });
     }
 
@@ -894,6 +900,19 @@ export default {
       return new Response(await observatoryBadge(env, url.searchParams.get("host")), {
         headers: { "content-type": "image/svg+xml", "cache-control": "public, max-age=600", ...CORS },
       });
+    }
+
+    // WITNESS — indice pubblico (chiave di verifica, ultimo checkpoint cofirmato per log)
+    // e la nota cofirmata in chiaro, nel formato che qualsiasi verificatore C2SP legge.
+    if (url.pathname === "/witness" && request.method === "GET") {
+      return json(await witnessIndex(env), 200, { "cache-control": "public, max-age=60" });
+    }
+    if (url.pathname.startsWith("/witness/") && request.method === "GET") {
+      const id = url.pathname.slice("/witness/".length).replace(/\/$/, "");
+      if (!WITNESSED_LOGS.some((l) => l.id === id)) return json({ error: "unknown log" }, 404);
+      const note = await witnessLatestNote(env, id);
+      if (!note) return json({ error: "no cosigned checkpoint yet" }, 404);
+      return new Response(note, { headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "public, max-age=60", ...CORS } });
     }
 
     // Osservatorio del catalogo x402 — vista FREE (aggregati + nostre risorse).
@@ -964,6 +983,8 @@ export default {
   // that just closed as an on-chain attestation (no-op until the key is set).
   async scheduled(_event, env, ctx) {
     const work = (async () => {
+      // Witness first: 1-2 subrequest, mai in conflitto col budget del sigillo.
+      await witnessTick(env).catch((e) => console.error("witness:", e.message));
       await coherenceObserve(env);
       if (env.COHERENCE) {
         const today = utcDay();

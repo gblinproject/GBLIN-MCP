@@ -10,9 +10,15 @@
 // REGOLE PRE-REGISTRATE (non cambiarle senza dichiararlo):
 //  - Selezione: le TRACK_N risorse più recenti per lastUpdated nel discovery CDP
 //    (+ sempre le nostre). Refresh della lista 1 volta al giorno.
-//  - "alive" = risponde entro 8s con: 402 e challenge JSON che espone accepts[],
-//    oppure 2xx (risorsa free). Qualsiasi altro esito = not-ok (codice registrato).
-//    Le sonde NON pagano mai nessuno.
+//  - "alive" (REGOLA v2 dal 18/08/2026) = risponde entro 8s con: 402 e challenge
+//    che espone accepts[] — letta dall'header PAYMENT-REQUIRED (base64 JSON, il
+//    formato x402 v2) OPPURE dal corpo — oppure 2xx (risorsa free). Se la GET
+//    ottiene 400/404/405 (rotta POST-only) si ritenta UNA volta in POST con {}.
+//    Qualsiasi altro esito = not-ok (codice registrato). Le sonde NON pagano mai.
+//    STORIA: la v1 (16-18/08) leggeva SOLO il corpo e SOLO in GET: misurava il
+//    dialetto, non la vita (33.7% vs 98.9% sugli stessi 276 target, cross-check
+//    del 18/08 innescato da una segnalazione terza nello Slack x402). Dichiarato
+//    pubblicamente in METHODOLOGY.changelog; i contatori fails della v1 azzerati.
 //  - Nessun giudizio, solo fatti misurati: code, ms, lastOkAt, fails consecutivi.
 //
 // VINCOLI PIANO FREE (verificati): ≤50 subrequest/invocazione → PER_TICK sonde
@@ -65,28 +71,51 @@ async function fetchDiscoveryTop(env) {
   return urls;
 }
 
-async function probeOne(url) {
+const RULE_VERSION = 2;
+
+function challengeOk(r, bodyText) {
+  // x402 v2: challenge base64-JSON nell'header PAYMENT-REQUIRED; alcuni server la mettono (anche) nel corpo.
+  const h = r.headers.get("payment-required") || r.headers.get("x-payment-required");
+  if (h) {
+    try { const j = JSON.parse(atob(h)); if (Array.isArray(j?.accepts) && j.accepts.length > 0) return "header"; } catch { /* non base64 */ }
+    try { const j = JSON.parse(h); if (Array.isArray(j?.accepts) && j.accepts.length > 0) return "header"; } catch { /* non JSON */ }
+  }
+  try { const j = JSON.parse(bodyText); if (Array.isArray(j?.accepts) && j.accepts.length > 0) return "body"; } catch { /* corpo non JSON */ }
+  return null;
+}
+
+async function probeVerb(url, method) {
   const t0 = Date.now();
   try {
     const r = await fetch(url, {
-      headers: { accept: "application/json", "user-agent": "gblin-catalog-observer/1" },
+      method,
+      headers: { accept: "application/json", "user-agent": "gblin-catalog-observer/2", ...(method === "POST" ? { "content-type": "application/json" } : {}) },
+      body: method === "POST" ? "{}" : undefined,
       signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
       redirect: "follow",
     });
     const ms = Date.now() - t0;
-    let ok = false;
     if (r.status === 402) {
-      try {
-        const j = await r.json();
-        ok = Array.isArray(j?.accepts) && j.accepts.length > 0;
-      } catch { ok = false; }
-    } else if (r.status >= 200 && r.status < 300) {
-      ok = true;
+      const via = challengeOk(r, await r.text().catch(() => ""));
+      return { code: 402, ms, ok: !!via, via: via ? `${method.toLowerCase()}-${via}` : null };
     }
-    return { code: r.status, ms, ok };
+    if (r.status >= 200 && r.status < 300) return { code: r.status, ms, ok: true, via: `${method.toLowerCase()}-2xx` };
+    return { code: r.status, ms, ok: false, via: null };
   } catch {
-    return { code: 0, ms: Date.now() - t0, ok: false };
+    return { code: 0, ms: Date.now() - t0, ok: false, via: null };
   }
+}
+
+async function probeOne(url) {
+  const g = await probeVerb(url, "GET");
+  if (g.ok) return g;
+  // rotta POST-only (o che pretende un corpo): UN solo ritentativo in POST
+  if (g.code === 404 || g.code === 405 || g.code === 400) {
+    const p = await probeVerb(url, "POST");
+    if (p.ok) return p;
+    return { code: p.code || g.code, ms: g.ms + p.ms, ok: false, via: null, get_code: g.code };
+  }
+  return g;
 }
 
 /** Un giro di sonde (chiamato dal cron, MAI nel tick del sigillo). */
@@ -109,6 +138,11 @@ export async function catalogTick(env, nowMs) {
   let state = null;
   try { state = JSON.parse(await env.COHERENCE.get(STATE_KEY)); } catch { /* prima volta */ }
   if (!state) state = { updatedAt: 0, cursor: 0, entries: {} };
+  if ((state.rule || 1) < RULE_VERSION) {
+    // migrazione v1->v2: i "fails" della v1 erano artefatti di dialetto (corpo vs header), non assenze -> azzerati.
+    for (const e of Object.values(state.entries)) { e.fails = 0; delete e.ok; }
+    state.rule = RULE_VERSION; state.ruleSince = now;
+  }
 
   const batch = [];
   for (let i = 0; i < PER_TICK && i < list.urls.length; i++) {
@@ -120,7 +154,7 @@ export async function catalogTick(env, nowMs) {
   for (let i = 0; i < batch.length; i++) {
     const u = batch[i], r = results[i];
     const e = state.entries[u] || { firstSeenAt: now, fails: 0 };
-    e.code = r.code; e.ms = r.ms; e.ok = r.ok; e.lastProbeAt = now;
+    e.code = r.code; e.ms = r.ms; e.ok = r.ok; e.via = r.via || null; e.rule = RULE_VERSION; e.lastProbeAt = now;
     if (r.ok) { e.lastOkAt = now; e.fails = 0; } else { e.fails = (e.fails || 0) + 1; }
     state.entries[u] = e;
   }
@@ -155,7 +189,7 @@ export async function catalogReport(env) {
   }
   return {
     what: "x402 catalog observatory (v1 beta) — factual liveness of the most recently updated Bazaar listings, probed in rotation. No payments are made by probes; no judgements, only measurements.",
-    alive_definition: "answers within 8s with HTTP 402 + parseable accepts[] challenge, or any 2xx",
+    alive_definition: "rule v2 (since 2026-08-18): answers within 8s with HTTP 402 + parseable accepts[] challenge read from the PAYMENT-REQUIRED header or the body (GET, one POST retry on 400/404/405), or any 2xx",
     summary: summarize(state),
     our_own_listings: ours,
     full_feed: "per-endpoint detail (code, latency, last_ok, consecutive fails) is available as a paid x402 resource — see gblin.digital/api/x402/llms.txt",
@@ -180,15 +214,25 @@ export async function catalogFull(env, token) {
  * ──────────────────────────────────────────────────────────────────────────*/
 
 const METHODOLOGY = {
+  rule_version: 2,
+  rule_since: "2026-08-18",
   selection: "top ~200 resources by lastUpdated on the public CDP x402 discovery catalog, refreshed daily; GBLIN's own endpoints are always included and judged by the same rules",
-  probe: "plain GET, accept: application/json, 8s timeout, follow redirects; each endpoint is probed in rotation roughly every 2 hours",
-  alive: "HTTP 402 with a parseable non-empty accepts[] array, or any 2xx, within the timeout",
-  never: "probes never pay anyone, never retry, never judge quality — liveness only",
+  probe: "GET, accept: application/json, 8s timeout, follow redirects; if the GET returns 400/404/405 (POST-only route) one POST retry with an empty JSON body; each endpoint is probed in rotation roughly every 2 hours",
+  alive: "HTTP 402 whose challenge exposes a non-empty accepts[] array — read from the PAYMENT-REQUIRED header (base64 JSON, the x402 v2 form) or from the response body — or any 2xx, within the timeout",
+  never: "probes never pay anyone, never judge quality — liveness only",
+  changelog: [
+    {
+      version: 1, from: "2026-08-16", to: "2026-08-18",
+      rule: "plain GET only; alive = HTTP 402 with a parseable accepts[] in the BODY, or any 2xx",
+      correction: "v1 measured dialect, not liveness: it never read the PAYMENT-REQUIRED header and never retried POST-only routes. Flagged by a third-party re-run in the x402 Slack (#wg-domain-discovery, 2026-08-17). Our own cross-check on the same 276 targets, 2026-08-18: rule v1 33.7% alive, rule v2 98.9%; 139 targets carried the challenge in the header only, 41 were POST-only, 0 were unreachable. The published 36.7% (2026-08-16) was therefore wrong as a liveness figure. Cross-check data: https://github.com/gblinproject/x402-catalog-probe. v1 consecutive-fail counters were reset at migration; last_ok timestamps observed under v1 remain valid (v1 was strictly stricter).",
+    },
+  ],
 };
 
 function fullRows(state) {
+  // dopo un cambio di regola contano SOLO le sonde già rifatte con la regola corrente (niente mescolanze v1/v2)
   return Object.entries(state?.entries || {})
-    .filter(([, e]) => e.lastProbeAt)
+    .filter(([, e]) => e.lastProbeAt && (e.rule || 1) === RULE_VERSION)
     .map(([u, e]) => ({
       url: u,
       ours: u.startsWith(OUR_PREFIX),
@@ -197,6 +241,7 @@ function fullRows(state) {
       latency_ms: e.ms,
       last_ok: e.lastOkAt ? new Date(e.lastOkAt).toISOString() : null,
       consecutive_fails: e.fails || 0,
+      alive_via: e.via || null,
       first_seen: e.firstSeenAt ? new Date(e.firstSeenAt).toISOString() : null,
     }))
     .sort((a, b) => (a.alive === b.alive ? a.url.localeCompare(b.url) : a.alive ? -1 : 1));
@@ -212,7 +257,7 @@ export async function observatoryJson(env) {
     generated_at: new Date(state?.updatedAt || Date.now()).toISOString(),
     stable_url: "https://gblin-mcp.gblin-mcp-worker.workers.dev/observatory.json",
     methodology: METHODOLOGY,
-    summary: { tracked: rows.length, alive_now: alive, alive_pct: rows.length ? Math.round((1000 * alive) / rows.length) / 10 : 0 },
+    summary: { tracked: rows.length, alive_now: alive, alive_pct: rows.length ? Math.round((1000 * alive) / rows.length) / 10 : 0, in_rotation: Object.keys(state?.entries || {}).length, note: rows.length < Object.keys(state?.entries || {}).length ? "rule change in progress: only endpoints already re-probed under the current rule are counted; the rest re-enter within ~3h" : undefined },
     endpoints: rows,
     free_market_risk_regime: "https://gblin-mcp.gblin-mcp-worker.workers.dev/regime",
     operator: "gblin.digital (ERC-8004 agent #59286 on Base) — our own endpoints appear in the table under the same rules",
@@ -227,7 +272,7 @@ export async function observatoryPage(env) {
   const tr = d.endpoints.map((r) => {
     const host = r.url.replace(/^https?:\/\//, "").split("/")[0];
     const path = r.url.replace(/^https?:\/\/[^/]+/, "");
-    return `<tr${r.ours ? ' class="ours"' : ""}><td>${r.alive ? "🟢" : "🔴"}</td><td>${esc(host)}${r.ours ? " <b>(ours)</b>" : ""}</td><td class="p">${esc(path)}</td><td>${r.http || "—"}</td><td>${r.latency_ms ?? "—"}</td><td>${r.last_ok ? esc(r.last_ok.slice(0, 16)) + "Z" : "never"}</td><td>${r.consecutive_fails}</td></tr>`;
+    return `<tr${r.ours ? ' class="ours"' : ""}><td>${r.alive ? "🟢" : "🔴"}</td><td>${esc(host)}${r.ours ? " <b>(ours)</b>" : ""}</td><td class="p">${esc(path)}</td><td>${r.http || "—"}</td><td>${r.latency_ms ?? "—"}</td><td>${r.last_ok ? esc(r.last_ok.slice(0, 16)) + "Z" : "never"}</td><td>${r.consecutive_fails}</td><td>${r.alive_via ? esc(r.alive_via) : "—"}</td></tr>`;
   }).join("\n");
   const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>x402 Uptime Observatory — ${d.summary.alive_pct}% of the catalog answers | GBLIN</title>
@@ -239,10 +284,11 @@ tr.ours{background:#fffbe8}.k{color:#555}.box{background:#f6f6f6;border-radius:8
 @media(prefers-color-scheme:dark){body{background:#111;color:#e6e6e6}td,th{border-color:#2c2c2c}tr.ours{background:#2a2410}.box{background:#1c1c1c}}</style></head><body>
 <h1>x402 Uptime Observatory</h1>
 <p class="k">Generated ${esc(d.generated_at)} · refreshed continuously · <a href="/observatory.json">raw JSON (stable URL)</a> · <a href="/observatory/badge.svg">badge</a></p>
-<p><b>${d.summary.alive_now} of ${d.summary.tracked}</b> tracked x402 resources answer right now — <b>${d.summary.alive_pct}%</b>. The rest of the catalog is unreachable, by the pre-registered definition below.</p>
+<p><b>${d.summary.alive_now} of ${d.summary.tracked}</b> tracked x402 resources answer right now — <b>${d.summary.alive_pct}%</b>. The rest did not answer under the pre-registered definition below (rule v${d.methodology.rule_version}, since ${d.methodology.rule_since}).</p>
 <div class="box"><b>Method (pre-registered):</b> ${esc(d.methodology.selection)}. Probe: ${esc(d.methodology.probe)}. <b>Alive</b> = ${esc(d.methodology.alive)}. ${esc(d.methodology.never)}.</div>
+<div class="box"><b>Correction log.</b> ${d.methodology.changelog.map((c) => `<b>Rule v${c.version}</b> (${esc(c.from)} → ${esc(c.to)}): ${esc(c.rule)}. ${esc(c.correction)}`).join("<br>")}</div>
 <p class="k">Run by <a href="https://gblin.digital">GBLIN</a> (ERC-8004 agent #59286). Our own endpoints appear below under the same rules — highlighted, not exempted. The free on-chain market risk regime lives at <a href="/regime"><code>/regime</code></a>.</p>
-<table><thead><tr><th></th><th>host</th><th>path</th><th>HTTP</th><th>ms</th><th>last OK (UTC)</th><th>fails</th></tr></thead><tbody>
+<table><thead><tr><th></th><th>host</th><th>path</th><th>HTTP</th><th>ms</th><th>last OK (UTC)</th><th>fails</th><th>alive via</th></tr></thead><tbody>
 ${tr}
 </tbody></table>
 <p class="k">Re-run it yourself: <a href="https://github.com/gblinproject/x402-catalog-probe">gblinproject/x402-catalog-probe</a> (one file, zero dependencies, same rules) — you may get a different number, and that is the point. Reading is free forever. Data license: reuse with a link to this page. How to cite: "GBLIN x402 Uptime Observatory, &lt;date&gt;, gblin-mcp.gblin-mcp-worker.workers.dev/observatory". Contact: info@gblin.digital</p>
