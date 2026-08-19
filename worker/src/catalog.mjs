@@ -110,7 +110,7 @@ async function probeOne(url) {
   const g = await probeVerb(url, "GET");
   if (g.ok) return g;
   // rotta POST-only (o che pretende un corpo): UN solo ritentativo in POST
-  if (g.code === 404 || g.code === 405 || g.code === 400) {
+  if (g.code === 404 || g.code === 405 || g.code === 400 || g.code === 501) {
     const p = await probeVerb(url, "POST");
     if (p.ok) return p;
     return { code: p.code || g.code, ms: g.ms + p.ms, ok: false, via: null, get_code: g.code };
@@ -217,10 +217,15 @@ const METHODOLOGY = {
   rule_version: 2,
   rule_since: "2026-08-18",
   selection: "top ~200 resources by lastUpdated on the public CDP x402 discovery catalog, refreshed daily; GBLIN's own endpoints are always included and judged by the same rules",
-  probe: "GET, accept: application/json, 8s timeout, follow redirects; if the GET returns 400/404/405 (POST-only route) one POST retry with an empty JSON body; each endpoint is probed in rotation roughly every 2 hours",
+  probe: "GET, accept: application/json, 8s timeout, follow redirects; if the GET returns 400/404/405/501 (POST-only route) one POST retry with an empty JSON body; each endpoint is probed in rotation roughly every 2 hours",
   alive: "HTTP 402 whose challenge exposes a non-empty accepts[] array — read from the PAYMENT-REQUIRED header (base64 JSON, the x402 v2 form) or from the response body — or any 2xx, within the timeout",
   never: "probes never pay anyone, never judge quality — liveness only",
   changelog: [
+    {
+      version: "2.1", from: "2026-08-18", to: null,
+      rule: "as v2, plus HTTP 501 added to the statuses that trigger the single POST retry (aligns with the independent cross-check method published by M. Oliva, x402 Slack, 2026-08-18)",
+      correction: "no effect on the 201 endpoints tracked on 2026-08-18 (none returned 501); recorded so that the two methods are reproducibly identical on the verb-fallback rule.",
+    },
     {
       version: 1, from: "2026-08-16", to: "2026-08-18",
       rule: "plain GET only; alive = HTTP 402 with a parseable accepts[] in the BODY, or any 2xx",

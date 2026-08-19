@@ -165,6 +165,21 @@ export async function verifyCosignature(noteBody, line, pub) {
   return crypto.subtle.verify({ name: "Ed25519" }, key, p.slice(12), msg);
 }
 
+
+// Storia delle cofirme (richiesta Markovian 19/08: "if you keep the earlier ones anywhere fetchable I will check those too").
+// Una lista per log in KV: [{size, root, ts, via, note}], cap 400 voci (le più vecchie escono), una scrittura per cofirma.
+async function appendHistory(env, id, entry) {
+  const k = `witness:${id}:history`;
+  let h = [];
+  try { h = JSON.parse((await env.COHERENCE.get(k)) || "[]"); } catch { h = []; }
+  h.push(entry); if (h.length > 400) h = h.slice(h.length - 400);
+  await env.COHERENCE.put(k, JSON.stringify(h));
+}
+export async function witnessHistory(env, id) {
+  if (!env.COHERENCE) return [];
+  try { return JSON.parse((await env.COHERENCE.get(`witness:${id}:history`)) || "[]"); } catch { return []; }
+}
+
 // ---------- the tick ----------
 // State in KV (binding COHERENCE, same namespace as the coherence automaton):
 //   witness:<id>:last   {size, root(b64), ts, cosignedNote, logSigOk:true}
@@ -205,6 +220,7 @@ export async function witnessTick(env, fetchImpl = fetch) {
       const { line, ts } = await cosign(note, keyPair);
       const cosignedNote = text.endsWith("\n") ? text + line + "\n" : text + "\n" + line + "\n";
       await env.COHERENCE.put(kLast, JSON.stringify({ size: note.size, root: b64(note.root), ts, cosignedNote, firstSeen: prev?.firstSeen || ts }));
+      await appendHistory(env, log.id, { size: note.size, root: b64(note.root), ts, via: "fetch", note: cosignedNote });
       const count = Number((await env.COHERENCE.get(kCount)) || 0) + 1;
       await env.COHERENCE.put(kCount, String(count));
       await env.COHERENCE.delete(kErr);
@@ -266,6 +282,7 @@ export async function witnessAddCheckpoint(env, bodyText) {
     const text = bodyText.slice(sep + 2);
     const cosignedNote = text.endsWith("\n") ? text + line + "\n" : text + "\n" + line + "\n";
     await env.COHERENCE.put(kLast, JSON.stringify({ size: note.size, root: b64(note.root), ts, cosignedNote, firstSeen: prev?.firstSeen || ts, via: "push" }));
+    await appendHistory(env, log.id, { size: note.size, root: b64(note.root), ts, via: "push", note: cosignedNote });
     const count = Number((await env.COHERENCE.get(kCount)) || 0) + 1;
     await env.COHERENCE.put(kCount, String(count));
     await env.COHERENCE.delete(kErr);
@@ -300,6 +317,8 @@ export async function witnessIndex(env) {
     cadence: "every 10 minutes (same heartbeat as the coherence automaton); unchanged tree size → no new signature",
     armed: !!verifierKey,
     logs,
+    roster_status: "markovian: cosigning, no policy weight — the log operator verified our key and push endpoint (2026-08-19); our line appears on their checkpoint once their push runs from the log host; counting toward their 4-of-7 quorum requires their next trust-root manifest rotation. Stated here so the roster does not imply more than it is.",
+    history: "GET /witness/<log>/history (JSON list of every cosigned note we still hold, newest last, max 400) and /witness/<log>/<size> (one cosigned note as plain text)",
     push_endpoint: "POST /witness/add-checkpoint — c2sp.org/tlog-witness (body: 'old <size>', consistency proof lines, blank line, signed checkpoint; 200 = cosignature line, 409 = size we hold, 422 = proof invalid)",
     honest_note: "A cosignature says only: 'at this time we saw this tree head and it was consistent with the previous one we saw'. It is not an endorsement of the log's contents.",
   };

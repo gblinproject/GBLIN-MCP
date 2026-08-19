@@ -29,7 +29,7 @@ import { catalogTick, catalogReport, catalogFull, observatoryPage, observatoryJs
 // trasparenza terzi (C2SP tlog-cosignature v1). Primo log: markovianprotocol.com,
 // su loro invito. Zero costo: 1 lettura + 1 firma per tick; niente chain.
 // Secret WITNESS_KEY assente → disattivato in silenzio (fail-safe).
-import { witnessTick, witnessIndex, witnessLatestNote, witnessAddCheckpoint, WITNESSED_LOGS } from "./witness.mjs";
+import { witnessTick, witnessIndex, witnessLatestNote, witnessAddCheckpoint, witnessHistory, WITNESSED_LOGS } from "./witness.mjs";
 
 const GBLIN = "0x36C81d7E1966310F305eA637e761Cf77F90852f0";
 const BASKET_SELECTOR = "0x8c7e0875"; // basket(uint256)
@@ -914,8 +914,19 @@ export default {
       return json(await witnessIndex(env), 200, { "cache-control": "public, max-age=60" });
     }
     if (url.pathname.startsWith("/witness/") && request.method === "GET") {
-      const id = url.pathname.slice("/witness/".length).replace(/\/$/, "");
+      const parts = url.pathname.slice("/witness/".length).replace(/\/$/, "").split("/");
+      const id = parts[0];
       if (!WITNESSED_LOGS.some((l) => l.id === id)) return json({ error: "unknown log" }, 404);
+      if (parts[1] === "history") {
+        const h = await witnessHistory(env, id);
+        return json({ log: id, count: h.length, entries: h.map((e) => ({ size: e.size, root: e.root, cosigned_at: e.ts, cosigned_at_iso: new Date(e.ts * 1000).toISOString(), via: e.via, url: `/witness/${id}/${e.size}` })) }, 200, { "cache-control": "public, max-age=60" });
+      }
+      if (parts[1] && /^\d+$/.test(parts[1])) {
+        const h = await witnessHistory(env, id);
+        const e = [...h].reverse().find((x) => String(x.size) === parts[1]);
+        if (!e) return json({ error: "no cosigned note held for that size" }, 404);
+        return new Response(e.note, { headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "public, max-age=3600", ...CORS } });
+      }
       const note = await witnessLatestNote(env, id);
       if (!note) return json({ error: "no cosigned checkpoint yet" }, 404);
       return new Response(note, { headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "public, max-age=60", ...CORS } });
