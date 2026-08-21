@@ -22,7 +22,9 @@
 
 ▶️ **Runnable full-cycle demo** (read-only, no keys): `npx tsx examples/full-cycle.ts` — live against Base: treasury state → risk regime → attestation verified offline → invest calldata → JIT redemption calldata. [Source](examples/full-cycle.ts).
 
-🌐 **Hosted MCP (Streamable HTTP, no install):** `https://gblin-mcp.gblin-mcp-worker.workers.dev/mcp` — 6 free read-only tools (live risk regime, attestation sample, agent-economy stats, protocol info, and the **Coherence Proof** report), also on [Smithery](https://smithery.ai/servers/gblin-protocol/mcp). Source in [`worker/`](worker/).
+🌐 **Hosted MCP (Streamable HTTP, no install):** `https://gblin-mcp.gblin-mcp-worker.workers.dev/mcp` — **8 free tools**, no auth, no session: `get_market_risk_regime`, `get_attestation_sample`, `get_agent_economy_stats`, `get_protocol_info`, `get_coherence_report`, plus AI Action Receipts (`seal_action` demo 5/day/IP, `get_receipt`, `verify_receipt` — pure-math verification, no trust in this server). Docs are **MCP resources**, not tools: `gblin://howto/attestation`, `gblin://howto/seal`, `gblin://limits`, `gblin://keys` (verifier keys + key-rotation policy). Nothing is paid over MCP.
+> **GET-only audit** (for reviewers and clients that cannot POST): [`/meta`](https://gblin-mcp.gblin-mcp-worker.workers.dev/meta) (counts + `manifest_hash`) · [`/tools.json`](https://gblin-mcp.gblin-mcp-worker.workers.dev/tools.json) · [`/resources.json`](https://gblin-mcp.gblin-mcp-worker.workers.dev/resources.json) · [`/conformance`](https://gblin-mcp.gblin-mcp-worker.workers.dev/conformance) · [`/v1/verify/:index`](https://gblin-mcp.gblin-mcp-worker.workers.dev/v1/verify/0) (per-check booleans + on-chain anchor consistency).
+> This hosted surface is **deliberately different** from the npm stdio package below (13 tools, treasury/governance included). Also on [Smithery](https://smithery.ai/servers/gblin-protocol/mcp). Source in [`worker/`](worker/).
 
 ---
 
@@ -167,7 +169,7 @@ Add to `claude_desktop_config.json` (on Windows: `%APPDATA%\Claude\claude_deskto
 }
 ```
 
-Restart Claude Desktop. The 10 GBLIN tools appear in the tool picker.
+Restart Claude Desktop. The 13 GBLIN tools appear in the tool picker.
 
 ### Windsurf / Cursor
 
@@ -224,7 +226,7 @@ Also supports Cline, Continue.dev, and any agent that implements the MCP client 
 
 ---
 
-## The 10 tools
+## The 13 tools (npm stdio package)
 
 ### Free tools (no payment required)
 
@@ -348,7 +350,7 @@ src/
   client.ts    # viem PublicClient + on-chain timestamp helper
   helpers.ts   # NAV, basket state, slippage, cooldown, reverse quote
   keeper.ts    # keeper bounty finder (incentivizedRebalance math)
-  tools.ts     # the 10 tool implementations + zod schemas
+  tools.ts     # the 10 treasury tool implementations + zod schemas (receipts.ts adds 3)
   index.ts     # MCP stdio server entry
 scripts/
   test.ts      # live smoke test

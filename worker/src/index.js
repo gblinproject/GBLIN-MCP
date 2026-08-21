@@ -44,7 +44,7 @@ const FALLBACK_RPCS = [
 ];
 const SITE = "https://gblin.digital";
 const SUPPORTED_PROTOCOLS = ["2025-06-18", "2025-03-26", "2024-11-05"];
-const SERVER_INFO = { name: "gblin-mcp-http", version: "0.3.1" };
+const SERVER_INFO = { name: "gblin-mcp-http", version: "0.3.2" };
 
 // ── Tools ───────────────────────────────────────────────────────────────────
 
@@ -953,7 +953,10 @@ const SURFACE_META = {
   transport: "streamable-http (stateless, no auth)",
   tool_count: 8,
   paid_over_mcp: false,
-  sibling_package: { name: "@gblin-protocol/mcp-server", transport: "stdio (npm)", tool_count: 10, note: "different tool set: treasury/swap/governance tools; only get_market_risk_regime is shared" },
+  sibling_package: {
+    name: "@gblin-protocol/mcp-server", version: "0.3.0", transport: "stdio (npm)", tool_count: 13,
+    note: "Different, larger tool set: the 10 treasury/governance tools (get_treasury_state, quote_safe_swap, swap_gblin_to_usdc_jit, invest_usdc_to_gblin, analyze_treasury_health, get_governance_state, share_skill_with_peer, find_keeper_bounty, verify_risk_attestation) plus get_market_risk_regime, and 3 receipts tools (seal_action_demo, get_receipt, how_to_seal_paid). Only get_market_risk_regime and get_receipt behave identically here; this hosted server adds verify_receipt and the GET audit surface.",
+  },
   resources: ["gblin://howto/attestation", "gblin://howto/seal", "gblin://limits", "gblin://keys"],
   get_audit_urls: { meta: "/meta", tools: "/tools.json", resources: "/resources.json", conformance: "/conformance", verify: "/v1/verify/:index" },
 };
