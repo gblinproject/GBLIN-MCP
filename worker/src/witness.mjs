@@ -241,6 +241,54 @@ export async function witnessTick(env, fetchImpl = fetch) {
 // 200 → our cosignature line(s); 400 malformed; 403 unknown log / not signed by the pinned key;
 // 409 `old` ≠ the size we hold (body = our size, decimal + "\n"); 422 consistency proof invalid / tree shrank / fork.
 // Same KV state as the passive tick, so pushed and fetched checkpoints can never disagree.
+// ── Witness Network (witness-network.org) ────────────────────────────────────
+// Scopriamo i log dalla lista pubblica "testing" e li configuriamo da soli.
+// REGOLA DELLA RETE: un log scoperto va AGGIUNTO alla nostra configurazione e
+// non va MAI rimosso o modificato perche' la lista cambia — cosi' i manutentori
+// della lista non possono disattivare configurazioni passate (e sono un bersaglio
+// meno interessante). La lista e' un canale di scoperta, non il nostro file di config.
+export const WITNESS_LIST_URL = "https://testing.witness-network.org/log-list.1";
+const CFG_KEY = "witness:netcfg";           // { origin: {vkey, qpd, contact, addedAt} }
+
+export function parseLogList(text) {
+  const out = []; let cur = null; let sawHeader = false;
+  for (const raw of text.split("\n")) {
+    const line = raw.trim();
+    if (!line || line.startsWith("#")) continue;
+    if (!sawHeader) { if (line !== "logs/v0") throw new Error(`unexpected list header: ${line}`); sawHeader = true; continue; }
+    const [k, ...rest] = line.split(/\s+/); const v = rest.join(" ");
+    if (k === "vkey") { if (cur) out.push(cur); cur = { vkey: v }; }
+    else if (cur && (k === "origin" || k === "qpd" || k === "contact")) cur[k] = v;
+  }
+  if (cur) out.push(cur);
+  // l'origin, se non dichiarato, e' il nome della chiave nel vkey
+  return out.map((l) => ({ ...l, origin: l.origin || l.vkey.split("+")[0] }));
+}
+
+export async function witnessDiscoverLogs(env, fetchImpl = fetch) {
+  if (!env.COHERENCE) return { skipped: "no storage" };
+  let cfg = {};
+  try { cfg = JSON.parse((await env.COHERENCE.get(CFG_KEY)) || "{}"); } catch { cfg = {}; }
+  let logs;
+  try {
+    const res = await fetchImpl(WITNESS_LIST_URL, { headers: { "user-agent": "gblin-witness/1 (+https://gblin.digital/witness)" } });
+    if (!res.ok) return { error: `list HTTP ${res.status}` };
+    logs = parseLogList(await res.text());
+  } catch (e) { return { error: String(e.message || e) }; }
+  const added = [];
+  for (const l of logs) {
+    if (cfg[l.origin]) continue;            // gia' configurato: NON si tocca
+    cfg[l.origin] = { vkey: l.vkey, qpd: l.qpd || null, contact: l.contact || null, addedAt: new Date().toISOString(), list: "testing/log-list.1" };
+    added.push(l.origin);
+  }
+  if (added.length) await env.COHERENCE.put(CFG_KEY, JSON.stringify(cfg));
+  return { configured: Object.keys(cfg).length, added, seenInList: logs.length };
+}
+
+export async function witnessConfiguredLogs(env) {
+  try { return JSON.parse((await env.COHERENCE.get(CFG_KEY)) || "{}"); } catch { return {}; }
+}
+
 export async function witnessAddCheckpoint(env, bodyText) {
   if (!env.COHERENCE || !env.WITNESS_KEY) return { status: 503, body: "witness not armed\n" };
   let keyPair;
@@ -255,7 +303,13 @@ export async function witnessAddCheckpoint(env, bodyText) {
   try { proof = head.slice(1).filter((l) => l.length > 0).map(unb64); } catch { return { status: 400, body: "malformed: proof lines must be base64\n" }; }
   let note;
   try { note = parseNote(bodyText.slice(sep + 2)); } catch (e) { return { status: 400, body: `malformed checkpoint: ${e.message}\n` }; }
-  const log = WITNESSED_LOGS.find((l) => l.origin === note.origin);
+  let log = WITNESSED_LOGS.find((l) => l.origin === note.origin);
+  if (!log) {
+    // log scoperto dalla lista della witness-network: la chiave viene da li'
+    const cfg = await witnessConfiguredLogs(env);
+    const net = cfg[note.origin];
+    if (net) log = { id: "net:" + note.origin, origin: note.origin, vkey: net.vkey, note: `Discovered via ${net.list} on ${net.addedAt}` };
+  }
   if (!log) return { status: 403, body: "unknown log\n" };
   let sigOk = false;
   try { sigOk = await verifyLogSignature(note, log.vkey); } catch { sigOk = false; }
@@ -310,12 +364,32 @@ export async function witnessIndex(env) {
       firstCosignedAt: last?.firstSeen ? new Date(last.firstSeen * 1000).toISOString() : null,
     });
   }
+  const netCfg = await witnessConfiguredLogs(env);
   return {
     witness: WITNESS_NAME,
+    // Scheda "about" nel formato che la witness-network chiede agli operatori.
+    operator: "GBLIN Protocol",
+    contact: "info@gblin.digital · https://gblin.digital",
     verifierKey,
-    format: "c2sp.org/tlog-cosignature (v1, Ed25519); checkpoints re-verified against the pinned log key and a consistency proof before every cosignature",
+    format: "c2sp.org/tlog-cosignature (v1, Ed25519); checkpoints re-verified against the log key and a consistency proof before every cosignature",
     cadence: "every 10 minutes (same heartbeat as the coherence automaton); unchanged tree size → no new signature",
     armed: !!verifierKey,
+    witnessNetwork: {
+      lists: ["testing/log-list.1"],
+      listUrl: WITNESS_LIST_URL,
+      discovery: "the list is downloaded once a day and only used to DISCOVER new logs; a log we already configured is never removed or modified because the list changed",
+      configuredFromList: Object.keys(netCfg).length,
+      configured: Object.entries(netCfg).map(([origin, v]) => ({ origin, vkey: v.vkey, addedAt: v.addedAt, qpd: v.qpd })),
+      policy: "add-checkpoint is accepted for any log in our configuration; the checkpoint must verify against that log's key and, when we already hold a smaller tree, against a consistency proof. Requests beyond 60/min/IP are rate limited. No auth, no fee.",
+      state: "one persistent record per log (latest cosigned size, root, timestamp) plus a history of cosigned notes",
+      limits: "best effort, work-in-progress service run by one operator; not a production guarantee",
+      ourOwnLog: {
+        origin: "gblin.digital/receipts-log",
+        note: "We also operate an application transparency log for AI actions; it is operator-signed only and we are looking for witnesses.",
+        designNote: "https://github.com/gblinproject/gblin-treasury-risk-regime/blob/main/docs/ai-action-transparency-log.md",
+        forWitnesses: "GET /log/checkpoint · /log/consistency?old=&new= · /log/leaves?start=&end= · /log/proof/<i>",
+      },
+    },
     logs,
     roster_status: "markovian: cosigning, no policy weight — the log operator verified our key and push endpoint (2026-08-19); our line appears on their checkpoint once their push runs from the log host; counting toward their 4-of-7 quorum requires their next trust-root manifest rotation. Stated here so the roster does not imply more than it is.",
     history: "GET /witness/<log>/history (JSON list of every cosigned note we still hold, newest last, max 400) and /witness/<log>/<size> (one cosigned note as plain text)",

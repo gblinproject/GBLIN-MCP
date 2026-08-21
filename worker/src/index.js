@@ -29,7 +29,7 @@ import { catalogTick, catalogReport, catalogFull, observatoryPage, observatoryJs
 // trasparenza terzi (C2SP tlog-cosignature v1). Primo log: markovianprotocol.com,
 // su loro invito. Zero costo: 1 lettura + 1 firma per tick; niente chain.
 // Secret WITNESS_KEY assente → disattivato in silenzio (fail-safe).
-import { witnessTick, witnessIndex, witnessLatestNote, witnessAddCheckpoint, witnessHistory, WITNESSED_LOGS } from "./witness.mjs";
+import { witnessTick, witnessIndex, witnessLatestNote, witnessAddCheckpoint, witnessHistory, witnessDiscoverLogs, witnessConfiguredLogs, WITNESSED_LOGS } from "./witness.mjs";
 import { sealAction, getReceipt, rlogStatus, demoAllowed, treeRoot, signedCheckpoint, proofFor, verifyReceipt, anchorConsistency, consistencyProof, leaves, PROVENANCE_LEVELS, RLOG_ORIGIN } from "./rlog.mjs";
 
 const GBLIN = "0x36C81d7E1966310F305eA637e761Cf77F90852f0";
@@ -44,7 +44,7 @@ const FALLBACK_RPCS = [
 ];
 const SITE = "https://gblin.digital";
 const SUPPORTED_PROTOCOLS = ["2025-06-18", "2025-03-26", "2024-11-05"];
-const SERVER_INFO = { name: "gblin-mcp-http", version: "0.6.2" };
+const SERVER_INFO = { name: "gblin-mcp-http", version: "0.7.1" };
 
 // ── Tools ───────────────────────────────────────────────────────────────────
 
@@ -1337,6 +1337,12 @@ export default {
     // AI ACTION RECEIPTS — sigilli firmati+testimoniati per le azioni delle IA.
     // Pagato: via webapp /api/x402/seal (x402 $0.01, inoltra qui col token).
     // Demo: 5/giorno/IP, marcati demo:true. Lettura e verifica: gratis per sempre.
+    // Scoperta manuale dei log della witness-network (oltre al giro giornaliero).
+    if (url.pathname === "/internal/witness-discover" && request.method === "POST") {
+      const tok = url.searchParams.get("token") || "";
+      if (!env.CATALOG_TOKEN || tok !== env.CATALOG_TOKEN) return json({ error: "unauthorized" }, 401);
+      return json(await witnessDiscoverLogs(env), 200, { "cache-control": "no-store" });
+    }
     if (url.pathname === "/internal/seal" && request.method === "POST") {
       const tok = url.searchParams.get("token") || "";
       if (!env.CATALOG_TOKEN || tok !== env.CATALOG_TOKEN) return json({ error: "unauthorized" }, 401);
@@ -1375,6 +1381,7 @@ export default {
         for_witnesses: "GET /log/checkpoint (C2SP signed note) · GET /log/consistency?old=<m>&new=<n> (RFC 6962 append-only proof) · GET /log/leaves?start=&end= (raw records, recompute the tree yourself) · GET /log/proof/<i> (inclusion). Cosigning invitation open.",
         anchor: "tree root anchored daily on Base via EAS (schema " + "0x9f433a96..., promiseId keccak256('gblin-receipts-log'))",
         offline_verifier: "verify-receipt.mjs in github.com/gblinproject/gblin-treasury-risk-regime (zero deps)",
+        design_note: "https://github.com/gblinproject/gblin-treasury-risk-regime/blob/main/docs/ai-action-transparency-log.md — what a receipt proves and what it does not, wire formats, and the honest scale of this log",
       }, 200, { "cache-control": "public, max-age=60" });
     }
     // Ciò che serve a un WITNESS indipendente per firmare senza fidarsi di noi:
@@ -1488,7 +1495,9 @@ export default {
     if (url.pathname.startsWith("/witness/") && request.method === "GET") {
       const parts = url.pathname.slice("/witness/".length).replace(/\/$/, "").split("/");
       const id = parts[0];
-      if (!WITNESSED_LOGS.some((l) => l.id === id)) return json({ error: "unknown log" }, 404);
+      const netCfg = await witnessConfiguredLogs(env);
+      const known = WITNESSED_LOGS.some((l) => l.id === id) || Object.keys(netCfg).some((o) => "net:" + o === id || o === id);
+      if (!known) return json({ error: "unknown log" }, 404);
       if (parts[1] === "history") {
         const h = await witnessHistory(env, id);
         return json({ log: id, count: h.length, entries: h.map((e) => ({ size: e.size, root: e.root, cosigned_at: e.ts, cosigned_at_iso: new Date(e.ts * 1000).toISOString(), via: e.via, url: `/witness/${id}/${e.size}` })) }, 200, { "cache-control": "public, max-age=60" });
@@ -1582,6 +1591,7 @@ export default {
           // Advance the marker ONLY when every closed day is sealed. A partial
           // failure (one promise's tx fails) leaves the marker behind, so the very
           // next 10-min tick retries the missing seal instead of waiting a day.
+          await witnessDiscoverLogs(env).catch((e) => console.error("witness discovery:", e && e.message));
           const done = await coherenceAttestClosedDay(env);
           const anchored = await rlogAnchorDaily(env);
           if (done && anchored) await env.COHERENCE.put("attest:lastRun", today);
