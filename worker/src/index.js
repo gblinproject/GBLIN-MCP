@@ -44,7 +44,7 @@ const FALLBACK_RPCS = [
 ];
 const SITE = "https://gblin.digital";
 const SUPPORTED_PROTOCOLS = ["2025-06-18", "2025-03-26", "2024-11-05"];
-const SERVER_INFO = { name: "gblin-mcp-http", version: "0.4.0" };
+const SERVER_INFO = { name: "gblin-mcp-http", version: "0.5.0" };
 
 // ── Tools ───────────────────────────────────────────────────────────────────
 
@@ -111,14 +111,14 @@ const RESOURCES = [
   { uri: "gblin://howto/seal", name: "How to seal AI actions without limits (x402)", mimeType: "application/json",
     description: "Paid seal endpoint ($0.01 USDC on Base via x402), fields, free reading routes and the offline verifier." },
   { uri: "gblin://limits", name: "Rate limits and costs of this server", mimeType: "application/json",
-    description: "Machine-readable numbers: 60 requests/min/IP on /mcp, seal_action demo 5/day/IP, all tools free; paid prices of the x402 HTTP endpoints." },
+    description: "Machine-readable numbers: 60 requests/min/IP on /mcp, receipts.entry.seal demo 5/day/IP, all tools free; paid prices of the x402 HTTP endpoints." },
   { uri: "gblin://keys", name: "Signing keys and rotation policy", mimeType: "application/json",
     description: "Current verifier keys (receipts log, witness), the EAS attester wallet, and the pre-registered key-rotation procedure (how old receipts stay verifiable)." },
 ];
 
 const TOOLS = [
   {
-    name: "get_market_risk_regime",
+    name: "risk.regime.get",
     description:
       "Current BTC/ETH risk regime (calm | elevated | crash) with a suggested posture, read live from GBLIN's on-chain Crash Shield on Base (60s cache). Free and unsigned; a signed, verifiable-offline version is a paid x402 endpoint (resource gblin://howto/attestation).",
     inputSchema: { type: "object", properties: {}, required: [], additionalProperties: false },
@@ -156,7 +156,7 @@ const TOOLS = [
     },
   },
   {
-    name: "get_attestation_sample",
+    name: "risk.attestation.sample",
     description:
       "Static, permanently expired sample of the signed Risk Attestation (sample:true), same fields and EIP-712 schema as the paid one. Use it to build and test a parser/verifier.",
     inputSchema: { type: "object", properties: {}, required: [], additionalProperties: false },
@@ -181,7 +181,7 @@ const TOOLS = [
     },
   },
   {
-    name: "get_agent_economy_stats",
+    name: "protocol.economy.stats",
     description:
       "Cumulative public counters of GBLIN's x402 endpoints: paid calls, unique payer wallets, USDC earned, with methodology disclosure. Cached 5 min.",
     inputSchema: { type: "object", properties: {}, required: [], additionalProperties: false },
@@ -205,7 +205,7 @@ const TOOLS = [
     },
   },
   {
-    name: "get_protocol_info",
+    name: "protocol.info.get",
     description:
       "GBLIN llms.txt as plain text: contract addresses, endpoints, prices, payment flow, field contract of the attestation.",
     inputSchema: { type: "object", properties: {}, required: [], additionalProperties: false },
@@ -219,7 +219,7 @@ const TOOLS = [
     },
   },
   {
-    name: "seal_action",
+    name: "receipts.entry.seal",
     description:
       "Append the HASHES of an AI action to GBLIN's public RFC 6962 transparency log and return a portable receipt: Ed25519 signature, inclusion proof, operator-signed C2SP checkpoint, plus the latest on-chain anchor (EAS on Base, daily). mode=demo (the only mode over MCP): 5 seals/day/IP, receipts marked demo:true. Unlimited seals are a paid x402 HTTP endpoint (resource gblin://howto/seal). Provenance is self-reported: the receipt proves existence and time of the record, not that the action happened. The action/agent_id/tool/meta strings are PUBLISHED in the log: identifiers only, never secrets.",
     inputSchema: {
@@ -240,18 +240,18 @@ const TOOLS = [
     outputSchema: RECEIPT_SCHEMA,
   },
   {
-    name: "get_receipt",
+    name: "receipts.entry.get",
     description: "Receipt #index from GBLIN's receipts log, re-signed (Ed25519 is deterministic) with a fresh inclusion proof, the current signed checkpoint and the latest on-chain anchor. Free.",
     inputSchema: { type: "object", properties: { index: { type: "integer", minimum: 0, description: "Receipt index in the log (0-based; current size at GET /log/checkpoint)" } }, required: ["index"], additionalProperties: false },
     annotations: { title: "Get a receipt by index", ...RO },
     outputSchema: RECEIPT_SCHEMA,
   },
   {
-    name: "verify_receipt",
+    name: "receipts.entry.verify",
     description: "Verify a gblin-receipt/v1 JSON with pure math (no log lookup, no trust in this server): leaf hash, Ed25519 signature, RFC 6962 inclusion proof, C2SP checkpoint signature, verifier-key hash. Same checks as the zero-dependency verify-receipt.mjs you can run offline. For the extra on-chain-anchor consistency check use GET /v1/verify/:index.",
     inputSchema: {
       type: "object",
-      properties: { receipt: { type: "object", description: "The receipt JSON as returned by seal_action / get_receipt / GET /v1/receipt/:i (bare or wrapped in {receipt})" } },
+      properties: { receipt: { type: "object", description: "The receipt JSON as returned by receipts.entry.seal / receipts.entry.get / GET /v1/receipt/:i (bare or wrapped in {receipt})" } },
       required: ["receipt"],
       additionalProperties: false,
     },
@@ -269,7 +269,7 @@ const TOOLS = [
     },
   },
   {
-    name: "get_coherence_report",
+    name: "coherence.report.get",
     description:
       "Kept/violated tallies for GBLIN's pre-registered, hash-pinned promises (attestation uptime, counter honesty), probed every 10 minutes; each closed UTC day is sealed on Base as an EAS attestation (schema 0x9f433a96…). Self-observation only in v0. Free.",
     inputSchema: { type: "object", properties: {}, required: [], additionalProperties: false },
@@ -873,35 +873,49 @@ async function cachedRegime(env) {
 
 // ── Tool dispatch ───────────────────────────────────────────────────────────
 
-async function callTool(name, env, args = {}) {
+// Legacy flat tool names kept working (unlisted) for clients that learned them
+// before the 2026-08-21 rename to the dot-notation tree. Removed after 2026-11-21.
+const LEGACY_TOOL_NAMES = {
+  get_market_risk_regime: "risk.regime.get",
+  get_attestation_sample: "risk.attestation.sample",
+  get_protocol_info: "protocol.info.get",
+  get_agent_economy_stats: "protocol.economy.stats",
+  get_coherence_report: "coherence.report.get",
+  seal_action: "receipts.entry.seal",
+  seal_action_demo: "receipts.entry.seal",
+  get_receipt: "receipts.entry.get",
+  verify_receipt: "receipts.entry.verify",
+};
+
+async function callTool(rawName, env, args = {}) {
+  const name = LEGACY_TOOL_NAMES[rawName] || rawName;
   switch (name) {
-    case "get_market_risk_regime":
+    case "risk.regime.get":
       return cachedRegime(env);
-    case "get_attestation_sample": {
+    case "risk.attestation.sample": {
       const r = await cachedFetch(`${SITE}/api/x402/attestation-sample`, 3600);
       return r.json();
     }
-    case "get_agent_economy_stats": {
+    case "protocol.economy.stats": {
       const r = await cachedFetch(`${SITE}/api/agent-stats`, 300);
       return r.json();
     }
-    case "get_protocol_info": {
+    case "protocol.info.get": {
       const r = await cachedFetch(`${SITE}/api/x402/llms.txt`, 3600);
       return { llms_txt: await r.text() };
     }
-    case "get_coherence_report":
+    case "coherence.report.get":
       return await coherenceReport(env);
 
-    case "seal_action":
-    case "seal_action_demo": { // alias kept for clients that learned the old name (remove after 2026-09-21)
+    case "receipts.entry.seal": {
       if (args.mode && args.mode !== "demo") throw Object.assign(new Error("only mode='demo' is available over MCP; paid seals: x402 HTTP endpoint (resource gblin://howto/seal)"), { code: -32602 });
       const r = await sealAction(env, args, { demo: true });
       if (r.status !== 200) throw new Error(r.error);
       return r.receipt;
     }
-    case "verify_receipt":
+    case "receipts.entry.verify":
       return verifyReceipt(args.receipt);
-    case "get_receipt": {
+    case "receipts.entry.get": {
       const idx = Number(args.index);
       const r = await getReceipt(env, idx);
       if (r.status !== 200) throw new Error(r.error);
@@ -921,10 +935,10 @@ function howtoSeal() {
         what: "AI Action Receipts: a portable, signed receipt for any AI action, in a public append-only transparency log. Input/output go in as HASHES only (the action label and metadata you send are published); you get back signature + RFC 6962 inclusion proof + operator-signed C2SP checkpoint; the tree root is anchored daily on Base (EAS). Evidence of existence and time — NOT a compliance certificate. Independent witness cosigning: invitation open.",
         paid_endpoint: `${SITE}/api/x402/seal`,
         price: "0.01 USDC on Base via x402 (unlimited)",
-        demo: "MCP tool seal_action (mode demo) or POST https://gblin-mcp.gblin-mcp-worker.workers.dev/v1/seal-demo (5/day/IP, receipts marked demo:true)",
+        demo: "MCP tool receipts.entry.seal (mode demo) or POST https://gblin-mcp.gblin-mcp-worker.workers.dev/v1/seal-demo (5/day/IP, receipts marked demo:true)",
         fields: { action: "string <=128 (required)", input_hash: "sha256 hex of your input (required)", output_hash: "sha256 hex (optional)", agent_id: "string <=128 (optional)", tool: "string <=128 (optional)", meta: "JSON <=512 chars (optional)" },
         read_free: "GET /v1/receipt/:index · /log/checkpoint · /log/proof/:index · human page /receipt/:index",
-        verify_offline: "MCP tool verify_receipt (pure math) or verify-receipt.mjs in github.com/gblinproject/gblin-treasury-risk-regime — zero dependencies",
+        verify_offline: "MCP tool receipts.entry.verify (pure math) or verify-receipt.mjs in github.com/gblinproject/gblin-treasury-risk-regime — zero dependencies",
       };
 }
 
@@ -955,10 +969,11 @@ const SURFACE_META = {
   paid_over_mcp: false,
   sibling_package: {
     name: "@gblin-protocol/mcp-server", version: "0.3.0", transport: "stdio (npm)", tool_count: 13,
-    note: "Different, larger tool set: the 10 treasury/governance tools (get_treasury_state, quote_safe_swap, swap_gblin_to_usdc_jit, invest_usdc_to_gblin, analyze_treasury_health, get_governance_state, share_skill_with_peer, find_keeper_bounty, verify_risk_attestation) plus get_market_risk_regime, and 3 receipts tools (seal_action_demo, get_receipt, how_to_seal_paid). Only get_market_risk_regime and get_receipt behave identically here; this hosted server adds verify_receipt and the GET audit surface.",
+    note: "Different, larger tool set: the 10 treasury/governance tools (get_treasury_state, quote_safe_swap, swap_gblin_to_usdc_jit, invest_usdc_to_gblin, analyze_treasury_health, get_governance_state, share_skill_with_peer, find_keeper_bounty, verify_risk_attestation) plus get_market_risk_regime, and 3 receipts tools (seal_action_demo, get_receipt, how_to_seal_paid). Only the risk-regime read and the receipt read behave identically here (as risk.regime.get / receipts.entry.get); this hosted server adds receipts.entry.verify and the GET audit surface. The stdio package keeps flat snake_case names.",
   },
   resources: ["gblin://howto/attestation", "gblin://howto/seal", "gblin://limits", "gblin://keys"],
   prompts: ["risk_gate", "seal_and_verify"],
+  legacy_tool_aliases: { note: "Pre-2026-08-21 flat names still accepted by tools/call (not listed). Removed after 2026-11-21.", map: LEGACY_TOOL_NAMES },
   get_audit_urls: { meta: "/meta", tools: "/tools.json", resources: "/resources.json", conformance: "/conformance", verify: "/v1/verify/:index" },
 };
 // Canonical manifest hash (tools + resources), so docs and Smithery can be checked against the live surface.
@@ -977,6 +992,7 @@ async function metaDoc(env) {
     tool_count: TOOLS.length, tool_names: TOOLS.map((t) => t.name),
     resource_count: RESOURCES.length, resource_uris: RESOURCES.map((r) => r.uri),
     prompt_count: PROMPTS.length, prompt_names: PROMPTS.map((p) => p.name),
+    legacy_tool_aliases: SURFACE_META.legacy_tool_aliases,
     manifest_hash: await manifestHash(),
     paid_over_mcp: false, auth_required: false, rate_limit_rpm_per_ip: 60,
     sibling_package: SURFACE_META.sibling_package,
@@ -991,14 +1007,14 @@ async function conformanceDoc(env) {
     meta, tools: TOOLS, resources: RESOURCES, prompts: PROMPTS,
     jsonrpc_errors: [
       { code: -32700, when: "body is not JSON" }, { code: -32600, when: "not a JSON-RPC 2.0 request" },
-      { code: -32601, when: "unknown method" }, { code: -32602, when: "unknown tool, bad arguments, or seal_action mode != demo" },
+      { code: -32601, when: "unknown method" }, { code: -32602, when: "unknown tool, bad arguments, or receipts.entry.seal mode != demo" },
       { code: -32002, when: "unknown resource uri" }, { code: -32602, when: "unknown prompt name" }, { code: -32603, when: "tool threw (e.g. log unavailable)" },
     ],
     http: { get_mcp: "405 (stateless: POST only)", rate_limited: "429 after 60 req/min/IP", disabled: "503 when MCP_DISABLED" },
     examples: {
-      get_market_risk_regime: await cachedRegime(env).catch(() => null),
-      get_receipt_0: await getReceipt(env, 0).then((r) => r.receipt).catch(() => null),
-      resource_limits: await readResource("gblin://limits", env),
+      "risk.regime.get": await cachedRegime(env).catch(() => null),
+      "receipts.entry.get#0": await getReceipt(env, 0).then((r) => r.receipt).catch(() => null),
+      "resource:gblin://limits": await readResource("gblin://limits", env),
     },
   };
 }
@@ -1037,7 +1053,7 @@ function getPrompt(name, args = {}) {
 
 Intended action: ${a("action", "(unspecified)")}${budget ? `\nRisk budget: ${budget}` : ""}
 
-1. Call get_market_risk_regime.
+1. Call risk.regime.get.
 2. Apply this rule, stated before you see the answer:
    - regime "calm"     -> proceed as intended
    - regime "elevated" -> proceed at reduced size, or wait
@@ -1056,8 +1072,8 @@ Intended action: ${a("action", "(unspecified)")}${budget ? `\nRisk budget: ${bud
 action: ${a("action", "(unspecified)")}
 input_hash: ${a("input_hash", "(missing - compute sha256 of the input first)")}${out ? `\noutput_hash: ${out}` : ""}
 
-1. Call seal_action with mode "demo" and those fields. Remember: the action label and any agent_id/tool/meta you send are PUBLISHED in a public log — identifiers only, never secrets. Only hashes carry the input/output.
-2. Pass the returned receipt to verify_receipt and report each check (leaf, signature, inclusion proof, checkpoint, verifier key).
+1. Call receipts.entry.seal with mode "demo" and those fields. Remember: the action label and any agent_id/tool/meta you send are PUBLISHED in a public log — identifiers only, never secrets. Only hashes carry the input/output.
+2. Pass the returned receipt to receipts.entry.verify and report each check (leaf, signature, inclusion proof, checkpoint, verifier key).
 3. Read receipt.anchor: say whether root_covers_this_receipt is true, and that only the tree ROOT is written on-chain (daily EAS on Base), never the individual receipt.
 4. Close with the honest limit: a valid receipt proves the record existed at that time in that log — it does NOT prove the action really happened (provenance is self-reported).` } }],
     };
@@ -1134,7 +1150,7 @@ async function handleMessage(msg, env) {
           capabilities: { tools: {}, resources: {}, prompts: {} },
           serverInfo: SERVER_INFO,
           instructions:
-            "GBLIN hosted MCP (stateless, no auth, 60 req/min/IP). Free tools: get_market_risk_regime (live calm|elevated|crash from the on-chain Crash Shield), get_attestation_sample, get_agent_economy_stats, get_protocol_info, get_coherence_report, and AI Action Receipts: seal_action (demo, 5/day/IP), get_receipt, verify_receipt (pure math). Paid things are x402 HTTP endpoints, never MCP calls: read resources gblin://howto/attestation, gblin://howto/seal, gblin://limits, gblin://keys. Two ready-made prompts: risk_gate, seal_and_verify. The stdio package @gblin-protocol/mcp-server is a different, larger toolset (treasury/swap tools).",
+            "GBLIN hosted MCP (stateless, no auth, 60 req/min/IP). Free tools: risk.regime.get (live calm|elevated|crash from the on-chain Crash Shield), risk.attestation.sample, protocol.economy.stats, protocol.info.get, coherence.report.get, and AI Action Receipts: receipts.entry.seal (demo, 5/day/IP), receipts.entry.get, receipts.entry.verify (pure math). Paid things are x402 HTTP endpoints, never MCP calls: read resources gblin://howto/attestation, gblin://howto/seal, gblin://limits, gblin://keys. Two ready-made prompts: risk_gate, seal_and_verify. The stdio package @gblin-protocol/mcp-server is a different, larger toolset (treasury/swap tools).",
         });
       }
       case "ping":
@@ -1238,7 +1254,7 @@ export default {
         site: SITE,
         witness: "/witness (we cosign third-party transparency-log checkpoints; C2SP tlog-cosignature v1)",
         audit: "/meta · /tools.json · /resources.json · /conformance · /v1/verify/:index (GET-only audit of the MCP surface)",
-        receipts: "/log (AI Action Receipts: seal what your agent did — $0.01 via x402 at gblin.digital/api/x402/seal, demo via MCP tool seal_action)",
+        receipts: "/log (AI Action Receipts: seal what your agent did — $0.01 via x402 at gblin.digital/api/x402/seal, demo via MCP tool receipts.entry.seal)",
       });
     }
 
@@ -1262,7 +1278,7 @@ export default {
         root_covers_this_receipt: a.anchor_found && idx < a.anchored_tree_size,
         provenance_level: r.receipt.provenance.level, demo: !!r.receipt.payload.demo,
         valid: v.valid, errors: v.errors,
-        note: "Cryptographic checks are recomputed server-side from the receipt alone (same math as verify_receipt / verify-receipt.mjs); anchor_root_matches recomputes the root at anchored_tree_size from the log and compares it with the root written on Base. Trust model: re-run verify-receipt.mjs offline if you do not trust this server.",
+        note: "Cryptographic checks are recomputed server-side from the receipt alone (same math as the receipts.entry.verify tool / verify-receipt.mjs); anchor_root_matches recomputes the root at anchored_tree_size from the log and compares it with the root written on Base. Trust model: re-run verify-receipt.mjs offline if you do not trust this server.",
       }, 200, { "cache-control": "public, max-age=60" });
     }
     if (url.pathname === "/coherence" && request.method === "GET") {
