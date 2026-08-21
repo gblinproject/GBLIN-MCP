@@ -151,6 +151,43 @@ export async function proofFor(env, index, N) {
   return path.map(b64);
 }
 
+// Consistency proof RFC 6962 (SUBPROOF): dimostra che l'albero di m foglie e'
+// un PREFISSO di quello di n foglie, cioe' che il log e' append-only e nessuna
+// voce e' stata riscritta. Senza questo un witness dovrebbe firmare alla cieca.
+async function subproof(env, m, a, b, isRoot) {
+  const n = b - a;
+  if (m === n) return isRoot ? [] : [await rangeRoot(env, a, b)];
+  let k = 1; while (k * 2 < n) k *= 2;
+  if (m <= k) {
+    const sub = await subproof(env, m, a, a + k, isRoot);
+    sub.push(await rangeRoot(env, a + k, b));
+    return sub;
+  }
+  const sub = await subproof(env, m - k, a + k, b, false);
+  sub.push(await rangeRoot(env, a, a + k));
+  return sub;
+}
+export async function consistencyProof(env, m, n) {
+  if (!(0 < m && m <= n)) throw new Error("need 0 < old <= new");
+  if (m === n) return [];
+  const path = await subproof(env, m, 0, n, true);
+  return path.map(b64);
+}
+
+// Foglie in chiaro [start,end): permette a chiunque di ricalcolare l'albero da zero.
+export async function leaves(env, start, end) {
+  const N = Number((await env.COHERENCE.get("rlog:size")) || 0);
+  end = Math.min(end, N);
+  if (!(start >= 0 && start < end)) return { start, end, size: N, leaves: [] };
+  if (end - start > 256) end = start + 256; // stesso tetto del log di Markovian
+  const out = [];
+  for (let i = start; i < end; i++) {
+    const c = await env.COHERENCE.get(`rlog:entry:${i}`);
+    out.push(c === null ? null : c);
+  }
+  return { start, end, size: N, encoding: "raw canonical JSON (gblin-canonical-json/1); leaf = SHA256(0x00 || record)", leaves: out };
+}
+
 // ---------- checkpoint (signed note C2SP) ----------
 export async function signedCheckpoint(env, N, root) {
   const kp = parseKey(env.RLOG_KEY);

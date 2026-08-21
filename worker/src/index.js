@@ -30,7 +30,7 @@ import { catalogTick, catalogReport, catalogFull, observatoryPage, observatoryJs
 // su loro invito. Zero costo: 1 lettura + 1 firma per tick; niente chain.
 // Secret WITNESS_KEY assente → disattivato in silenzio (fail-safe).
 import { witnessTick, witnessIndex, witnessLatestNote, witnessAddCheckpoint, witnessHistory, WITNESSED_LOGS } from "./witness.mjs";
-import { sealAction, getReceipt, rlogStatus, demoAllowed, treeRoot, signedCheckpoint, proofFor, verifyReceipt, anchorConsistency, PROVENANCE_LEVELS, RLOG_ORIGIN } from "./rlog.mjs";
+import { sealAction, getReceipt, rlogStatus, demoAllowed, treeRoot, signedCheckpoint, proofFor, verifyReceipt, anchorConsistency, consistencyProof, leaves, PROVENANCE_LEVELS, RLOG_ORIGIN } from "./rlog.mjs";
 
 const GBLIN = "0x36C81d7E1966310F305eA637e761Cf77F90852f0";
 const BASKET_SELECTOR = "0x8c7e0875"; // basket(uint256)
@@ -44,7 +44,7 @@ const FALLBACK_RPCS = [
 ];
 const SITE = "https://gblin.digital";
 const SUPPORTED_PROTOCOLS = ["2025-06-18", "2025-03-26", "2024-11-05"];
-const SERVER_INFO = { name: "gblin-mcp-http", version: "0.5.3" };
+const SERVER_INFO = { name: "gblin-mcp-http", version: "0.6.2" };
 
 // ── Tools ───────────────────────────────────────────────────────────────────
 
@@ -947,6 +947,8 @@ function howtoSeal() {
         price: "0.01 USDC on Base via x402 (unlimited)",
         demo: "MCP tool receipts.seal (mode demo) or POST https://gblin-mcp.gblin-mcp-worker.workers.dev/v1/seal-demo (5/day/IP, receipts marked demo:true)",
         fields: { action: "string <=128 (required)", input_hash: "sha256 hex of your input (required)", output_hash: "sha256 hex (optional)", agent_id: "string <=128 (optional)", tool: "string <=128 (optional)", meta: "JSON <=512 chars (optional)" },
+        human_page: "GET /receipt/:index — HTML page that verifies the receipt in the browser",
+        catalog_probe: "GET /observatory (human) · /observatory.json · /catalog — liveness probes of the public x402 catalog, our own endpoints included under the same rules",
         read_free: "GET /v1/receipt/:index · /log/checkpoint · /log/proof/:index · human page /receipt/:index",
         verify_offline: "MCP tool receipts.verify (pure math) or verify-receipt.mjs in github.com/gblinproject/gblin-treasury-risk-regime — zero dependencies",
       };
@@ -1272,6 +1274,10 @@ export default {
         witness: "/witness (we cosign third-party transparency-log checkpoints; C2SP tlog-cosignature v1)",
         audit: "/meta · /tools.json · /resources.json · /conformance · /v1/verify/:index (GET-only audit of the MCP surface)",
         receipts: "/log (AI Action Receipts: seal what your agent did — $0.01 via x402 at gblin.digital/api/x402/seal, demo via MCP tool receipts.seal)",
+        prompts: PROMPTS.map((p) => p.name),
+        resources: RESOURCES.map((r) => r.uri),
+        observatory: "/observatory (human) · /observatory.json · /catalog · /observatory/badge.svg?host=… — liveness probes of the public x402 catalog, our own endpoints under the same rules",
+        coherence: "/coherence (promises vs conduct, sealed daily on Base)",
       });
     }
 
@@ -1366,9 +1372,36 @@ export default {
         seal_demo: "POST /v1/seal-demo (5/day/IP, marked demo:true)",
         read: "GET /v1/receipt/:index (free forever) · GET /log/proof/:index · GET /log/checkpoint",
         explorer: "GET /receipt/:index (human page)",
+        for_witnesses: "GET /log/checkpoint (C2SP signed note) · GET /log/consistency?old=<m>&new=<n> (RFC 6962 append-only proof) · GET /log/leaves?start=&end= (raw records, recompute the tree yourself) · GET /log/proof/<i> (inclusion). Cosigning invitation open.",
         anchor: "tree root anchored daily on Base via EAS (schema " + "0x9f433a96..., promiseId keccak256('gblin-receipts-log'))",
         offline_verifier: "verify-receipt.mjs in github.com/gblinproject/gblin-treasury-risk-regime (zero deps)",
       }, 200, { "cache-control": "public, max-age=60" });
+    }
+    // Ciò che serve a un WITNESS indipendente per firmare senza fidarsi di noi:
+    // prova di consistenza (append-only) e foglie in chiaro per ricalcolare l'albero.
+    if (url.pathname === "/log/consistency" && request.method === "GET") {
+      const m = Number(url.searchParams.get("old")), n0 = url.searchParams.get("new");
+      const N = Number((await env.COHERENCE.get("rlog:size")) || 0);
+      const n = n0 === null ? N : Number(n0);
+      if (!Number.isInteger(m) || !Number.isInteger(n) || !(0 < m && m <= n && n <= N))
+        return json({ error: `need 0 < old <= new <= ${N}` }, 400);
+      try {
+        const [proof, oldRoot, newRoot] = await Promise.all([
+          consistencyProof(env, m, n), treeRoot(env, m), treeRoot(env, n),
+        ]);
+        return json({
+          origin: RLOG_ORIGIN, old: m, new: n,
+          old_root: btoa(String.fromCharCode(...oldRoot)), new_root: btoa(String.fromCharCode(...newRoot)),
+          proof, algorithm: "RFC 6962 §2.1.2 (SUBPROOF); node hash = SHA256(0x01 || left || right)",
+          note: "Proves the tree of `old` leaves is a prefix of the tree of `new` leaves: nothing was rewritten.",
+        }, 200, { "cache-control": "public, max-age=60" });
+      } catch (e) { return json({ error: String(e.message || e) }, 500); }
+    }
+    if (url.pathname === "/log/leaves" && request.method === "GET") {
+      const start = Number(url.searchParams.get("start") || 0);
+      const end = Number(url.searchParams.get("end") || start + 256);
+      if (!Number.isInteger(start) || !Number.isInteger(end)) return json({ error: "start/end must be integers" }, 400);
+      return json(await leaves(env, start, end), 200, { "cache-control": "public, max-age=60" });
     }
     if (url.pathname.startsWith("/log/proof/") && request.method === "GET") {
       const idx = Number(url.pathname.slice("/log/proof/".length));
