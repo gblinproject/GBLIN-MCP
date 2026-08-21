@@ -81,12 +81,25 @@ export async function anchorInfo(env, index) {
     eas_schema_uid: RLOG_EAS_SCHEMA_UID,
     promise_id: `keccak256("${RLOG_PROMISE_LABEL}")`,
     last_anchor: last ? { day: last.day, tree_size: last.size, root: last.root, tx: last.hash } : null,
-    covers_this_receipt: !!(last && typeof index === "number" && index < last.size),
+    root_covers_this_receipt: !!(last && typeof index === "number" && index < last.size),
+    covers_this_receipt: !!(last && typeof index === "number" && index < last.size), // alias of root_covers_this_receipt (kept 30 days)
+    anchored_tree_size: last ? last.size : null,
+    what_is_anchored: "Only the tree ROOT at last_anchor.tree_size is written on-chain; individual receipts never are. A receipt is covered iff its index < anchored tree_size, and then its inclusion proof binds it to that root. Until the next daily anchor, newer receipts rest on the operator-signed checkpoint alone.",
     explorer: `https://base.easscan.org/schema/view/${RLOG_EAS_SCHEMA_UID}`,
   };
 }
+export const PROVENANCE_LEVELS = ["self-reported", "server-observed", "externally-verified"];
+// Operator receipts (this Worker sealing its own actions, meta.self_sealed=true) are "server-observed".
+export function provenanceFor(payload) {
+  let self = false;
+  try { self = !!(payload && payload.meta && JSON.parse(payload.meta).self_sealed); } catch {}
+  return { ...PROVENANCE, level: self ? "server-observed" : "self-reported",
+    meaning: self ? "This server performed the sealed action itself (operator receipt, meta.self_sealed=true); the log proves recording time, the meta carries the on-chain tx." : PROVENANCE.meaning };
+}
 export const PROVENANCE = {
   level: "self-reported",
+  levels: PROVENANCE_LEVELS,
+  levels_meaning: { "self-reported": "sealer supplied the hashes; log proves recording time only", "server-observed": "this server itself performed/observed the action it sealed (operator receipts, meta.self_sealed=true)", "externally-verified": "a third party independently confirmed the action (not offered yet)" },
   meaning: "The sealer supplied action/input_hash/output_hash; the log proves they were recorded at this index and time. It does NOT prove the external action happened or that the hashes match any real input/output.",
 };
 
@@ -215,7 +228,7 @@ export async function sealAction(env, input, { demo = false } = {}) {
       inclusion_proof: proof,
       checkpoint,
       anchor: await anchorInfo(env, N),
-      provenance: PROVENANCE,
+      provenance: provenanceFor(payload),
       verify: "offline: see verify-receipt.mjs in github.com/gblinproject/gblin-treasury-risk-regime (zero deps)",
       note: "Evidence of existence and time in a signed append-only log, root anchored daily on Base (EAS) — NOT a compliance certificate and NOT an endorsement of the content. The action/agent_id/tool/meta strings you send are published in the public log: put identifiers there, never secrets; input/output go in as hashes only.",
     },
@@ -243,7 +256,7 @@ export async function getReceipt(env, index) {
       verifier_key: await rlogVerifierKey(kp.pub),
       inclusion_proof: proof, checkpoint,
       anchor: await anchorInfo(env, index),
-      provenance: PROVENANCE,
+      provenance: provenanceFor(JSON.parse(canonical)),
     },
   };
 }
@@ -330,4 +343,14 @@ export async function verifyReceipt(input) {
     }
   } catch (e) { fail("exception", String(e && e.message || e)); }
   return done();
+}
+
+// Anchor consistency (needs KV): does the root we anchored on-chain equal the root this log
+// recomputes for that tree size today? A mismatch would mean the log was rewritten.
+export async function anchorConsistency(env) {
+  let last = null;
+  try { last = JSON.parse((await env.COHERENCE.get("rlog:anchorLast")) || "null"); } catch { last = null; }
+  if (!last) return { anchor_found: false, anchor_root_matches: null, anchored_tree_size: null, anchor_tx: null };
+  const root = b64(await treeRoot(env, last.size));
+  return { anchor_found: true, anchor_root_matches: root === last.root, anchored_tree_size: last.size, anchor_tx: last.hash, anchor_day: last.day };
 }

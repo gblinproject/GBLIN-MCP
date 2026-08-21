@@ -30,7 +30,7 @@ import { catalogTick, catalogReport, catalogFull, observatoryPage, observatoryJs
 // su loro invito. Zero costo: 1 lettura + 1 firma per tick; niente chain.
 // Secret WITNESS_KEY assente → disattivato in silenzio (fail-safe).
 import { witnessTick, witnessIndex, witnessLatestNote, witnessAddCheckpoint, witnessHistory, WITNESSED_LOGS } from "./witness.mjs";
-import { sealAction, getReceipt, rlogStatus, demoAllowed, treeRoot, signedCheckpoint, proofFor, verifyReceipt, RLOG_ORIGIN } from "./rlog.mjs";
+import { sealAction, getReceipt, rlogStatus, demoAllowed, treeRoot, signedCheckpoint, proofFor, verifyReceipt, anchorConsistency, PROVENANCE_LEVELS, RLOG_ORIGIN } from "./rlog.mjs";
 
 const GBLIN = "0x36C81d7E1966310F305eA637e761Cf77F90852f0";
 const BASKET_SELECTOR = "0x8c7e0875"; // basket(uint256)
@@ -44,7 +44,7 @@ const FALLBACK_RPCS = [
 ];
 const SITE = "https://gblin.digital";
 const SUPPORTED_PROTOCOLS = ["2025-06-18", "2025-03-26", "2024-11-05"];
-const SERVER_INFO = { name: "gblin-mcp-http", version: "0.2.0" };
+const SERVER_INFO = { name: "gblin-mcp-http", version: "0.3.0" };
 
 // ── Tools ───────────────────────────────────────────────────────────────────
 
@@ -84,15 +84,21 @@ const RECEIPT_SCHEMA = {
       properties: {
         chain: { type: "string" }, method: { type: "string" }, eas_schema_uid: { type: "string" }, promise_id: { type: "string" },
         last_anchor: { type: ["object", "null"], properties: { day: { type: "string" }, tree_size: { type: "integer" }, root: { type: "string" }, tx: { type: "string" } } },
-        covers_this_receipt: { type: "boolean" }, explorer: { type: "string" },
+        root_covers_this_receipt: { type: "boolean", description: "true iff index < anchored_tree_size: the anchored ROOT commits to this leaf via the inclusion proof" },
+        covers_this_receipt: { type: "boolean", description: "deprecated alias of root_covers_this_receipt" },
+        anchored_tree_size: { type: ["integer", "null"] },
+        what_is_anchored: { type: "string" }, explorer: { type: "string" },
       },
-      required: ["covers_this_receipt"],
+      required: ["root_covers_this_receipt", "anchored_tree_size", "what_is_anchored"],
     },
     provenance: {
       type: "object",
       description: "What the receipt does and does not prove",
-      properties: { level: { type: "string", enum: ["self-reported"] }, meaning: { type: "string" } },
-      required: ["level"],
+      properties: {
+        level: { type: "string", enum: ["self-reported", "server-observed", "externally-verified"] },
+        levels: { type: "array", items: { type: "string" } }, levels_meaning: { type: "object" }, meaning: { type: "string" },
+      },
+      required: ["level", "levels"],
     },
   },
   required: ["format", "payload", "leaf", "index", "tree_size", "root", "signature", "verifier_key", "inclusion_proof", "checkpoint", "anchor", "provenance"],
@@ -105,7 +111,9 @@ const RESOURCES = [
   { uri: "gblin://howto/seal", name: "How to seal AI actions without limits (x402)", mimeType: "application/json",
     description: "Paid seal endpoint ($0.01 USDC on Base via x402), fields, free reading routes and the offline verifier." },
   { uri: "gblin://limits", name: "Rate limits and costs of this server", mimeType: "application/json",
-    description: "60 requests/min/IP on /mcp; seal_action demo 5/day/IP; all tools free; what is paid lives on x402 HTTP endpoints." },
+    description: "Machine-readable numbers: 60 requests/min/IP on /mcp, seal_action demo 5/day/IP, all tools free; paid prices of the x402 HTTP endpoints." },
+  { uri: "gblin://keys", name: "Signing keys and rotation policy", mimeType: "application/json",
+    description: "Current verifier keys (receipts log, witness), the EAS attester wallet, and the pre-registered key-rotation procedure (how old receipts stay verifiable)." },
 ];
 
 const TOOLS = [
@@ -225,7 +233,7 @@ const TOOLS = [
         tool: { type: "string", description: "Tool/model used (optional, <=128)" },
         meta: { type: "string", description: "Extra JSON, <=512 chars (optional)" },
       },
-      required: ["action", "input_hash"],
+      required: ["mode", "action", "input_hash"],
     },
     annotations: { title: "Seal an AI action (demo receipt)", readOnlyHint: false, idempotentHint: false, openWorldHint: false },
     outputSchema: RECEIPT_SCHEMA,
@@ -239,7 +247,7 @@ const TOOLS = [
   },
   {
     name: "verify_receipt",
-    description: "Verify a gblin-receipt/v1 JSON with pure math (no log lookup, no trust in this server): leaf hash, Ed25519 signature, RFC 6962 inclusion proof, C2SP checkpoint signature, verifier-key hash. Same checks as the zero-dependency verify-receipt.mjs you can run offline.",
+    description: "Verify a gblin-receipt/v1 JSON with pure math (no log lookup, no trust in this server): leaf hash, Ed25519 signature, RFC 6962 inclusion proof, C2SP checkpoint signature, verifier-key hash. Same checks as the zero-dependency verify-receipt.mjs you can run offline. For the extra on-chain-anchor consistency check use GET /v1/verify/:index.",
     inputSchema: {
       type: "object",
       properties: { receipt: { type: "object", description: "The receipt JSON as returned by seal_action / get_receipt / GET /v1/receipt/:i (bare or wrapped in {receipt})" } },
@@ -530,6 +538,9 @@ async function coherenceAttestClosedDay(env) {
         // Mark sealed only after a tx hash exists, so a failure retries next run.
         await env.COHERENCE.put(sealKey, hash, { expirationTtl: 120 * 86400 });
         await env.COHERENCE.put(`txlast:${p.id}`, JSON.stringify({ day, hash }));
+        // Dogfooding: the observer seals ITS OWN real action (this EAS tx) into the
+        // receipts log as a non-demo, operator-labelled receipt. Never blocks the seal.
+        await sealOperatorAction(env, { action: "coherence.eas-seal", subject: `${p.id}:${day}`, tx: hash, meta: { promise: p.id, day, tx: hash } });
       } catch {
         // RPC/gas hiccup: leave this day unsealed AND mark the run incomplete, so
         // the outer daily gate keeps retrying every 10 min instead of waiting a
@@ -582,6 +593,23 @@ async function rlogAnchorDaily(env) {
     await env.COHERENCE.put("rlog:anchorLast", JSON.stringify({ day: today, size: N, root: rootB64, hash }));
     return true;
   } catch { return false; }
+}
+
+// Operator receipts: real actions performed by this Worker, sealed as non-demo
+// entries with an explicit operator label in meta (never confused with customers).
+async function sha256hex(str) {
+  const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(str));
+  return [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+async function sealOperatorAction(env, { action, subject, tx, meta }) {
+  try {
+    if (!env.RLOG_KEY) return;
+    await sealAction(env, {
+      action, input_hash: await sha256hex(subject), output_hash: tx ? await sha256hex(tx) : undefined,
+      agent_id: "gblin.digital/coherence-observer", tool: "cloudflare-worker-cron",
+      meta: JSON.stringify({ operator: "gblin.digital", self_sealed: true, ...meta }).slice(0, 512),
+    }, { demo: false });
+  } catch (e) { console.error("operator seal:", e && e.message); }
 }
 
 // One-shot "genesis" seal: attest the real cumulative window observed so far
@@ -917,17 +945,94 @@ function howtoAttestation() {
       };
 }
 
-function readResource(uri) {
+// Exposed in tools/list._meta so an agent can tell this surface from the stdio package without reading docs.
+const SURFACE_META = {
+  server: SERVER_INFO,
+  transport: "streamable-http (stateless, no auth)",
+  tool_count: 8,
+  paid_over_mcp: false,
+  sibling_package: { name: "@gblin-protocol/mcp-server", transport: "stdio (npm)", tool_count: 10, note: "different tool set: treasury/swap/governance tools; only get_market_risk_regime is shared" },
+  resources: ["gblin://howto/attestation", "gblin://howto/seal", "gblin://limits", "gblin://keys"],
+  get_audit_urls: { meta: "/meta", tools: "/tools.json", resources: "/resources.json", conformance: "/conformance", verify: "/v1/verify/:index" },
+};
+// Canonical manifest hash (tools + resources), so docs and Smithery can be checked against the live surface.
+let MANIFEST_HASH = null;
+async function manifestHash() {
+  if (MANIFEST_HASH) return MANIFEST_HASH;
+  const canon = JSON.stringify({ tools: TOOLS, resources: RESOURCES });
+  const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canon));
+  MANIFEST_HASH = "sha256:" + [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, "0")).join("");
+  return MANIFEST_HASH;
+}
+async function metaDoc(env) {
+  return {
+    server: SERVER_INFO, transport: SURFACE_META.transport, protocol_versions: SUPPORTED_PROTOCOLS,
+    endpoint: "https://gblin-mcp.gblin-mcp-worker.workers.dev/mcp",
+    tool_count: TOOLS.length, tool_names: TOOLS.map((t) => t.name),
+    resource_count: RESOURCES.length, resource_uris: RESOURCES.map((r) => r.uri),
+    manifest_hash: await manifestHash(),
+    paid_over_mcp: false, auth_required: false, rate_limit_rpm_per_ip: 60,
+    sibling_package: SURFACE_META.sibling_package,
+    docs: { llms_txt: `${SITE}/llms.txt`, smithery: "https://smithery.ai/servers/gblin-protocol/mcp", repo: "https://github.com/gblinproject/gblin-treasury-risk-regime" },
+    audit: SURFACE_META.get_audit_urls,
+  };
+}
+async function conformanceDoc(env) {
+  const meta = await metaDoc(env);
+  return {
+    about: "GET-able conformance fixture of the hosted MCP surface: identical data to tools/list and resources/list, plus error shapes and representative outputs. Lets an auditor without POST capability check the live surface.",
+    meta, tools: TOOLS, resources: RESOURCES,
+    jsonrpc_errors: [
+      { code: -32700, when: "body is not JSON" }, { code: -32600, when: "not a JSON-RPC 2.0 request" },
+      { code: -32601, when: "unknown method" }, { code: -32602, when: "unknown tool, bad arguments, or seal_action mode != demo" },
+      { code: -32002, when: "unknown resource uri" }, { code: -32603, when: "tool threw (e.g. log unavailable)" },
+    ],
+    http: { get_mcp: "405 (stateless: POST only)", rate_limited: "429 after 60 req/min/IP", disabled: "503 when MCP_DISABLED" },
+    examples: {
+      get_market_risk_regime: await cachedRegime(env).catch(() => null),
+      get_receipt_0: await getReceipt(env, 0).then((r) => r.receipt).catch(() => null),
+      resource_limits: await readResource("gblin://limits", env),
+    },
+  };
+}
+
+async function readResource(uri, env) {
   switch (uri) {
     case "gblin://howto/attestation": return howtoAttestation();
     case "gblin://howto/seal": return howtoSeal();
     case "gblin://limits": return {
-      mcp_rate_limit: "60 requests per minute per IP (HTTP 429 beyond)",
-      seal_action_demo: "5 seals per day per IP, receipts marked demo:true",
-      tools: "all free, no auth, no session",
-      paid: { attestation: `${SITE}/api/x402/attestation ($0.003 USDC)`, seal: `${SITE}/api/x402/seal ($0.01 USDC)` },
-      kill_switch: "env MCP_DISABLED returns 503 for every request",
+      mcp_rpm_per_ip: 60,
+      mcp_rpm_exceeded_status: 429,
+      seal_demo_per_day_per_ip: 5,
+      seal_demo_marked: "payload.demo = true",
+      tools_free: true, auth_required: false, session_required: false,
+      paid: {
+        attestation: { url: `${SITE}/api/x402/attestation`, price_usdc: 0.003, network: "eip155:8453", protocol: "x402" },
+        seal: { url: `${SITE}/api/x402/seal`, price_usdc: 0.01, network: "eip155:8453", protocol: "x402" },
+      },
+      kill_switch: "env MCP_DISABLED => HTTP 503 on every request",
     };
+    case "gblin://keys": {
+      let rlog = null, witness = null;
+      try { rlog = (await rlogStatus(env)).verifier_key; } catch {}
+      try { if (env.WITNESS_KEY) { const { parseWitnessSecret, witnessVerifierKey } = await import("./witness.mjs"); witness = await witnessVerifierKey(parseWitnessSecret(env.WITNESS_KEY).pub); } } catch {}
+      return {
+        receipts_log: { origin: RLOG_ORIGIN, verifier_key: rlog, alg: "Ed25519 (C2SP signed note, key id 0x01)", signs: ["gblin-receipt/v1 receipts", "checkpoints"] },
+        witness: { name: "gblin.digital/witness", verifier_key: witness, alg: "Ed25519 (C2SP tlog-cosignature v1, key id 0x04)", cosigns: "markovianprotocol.com/log" },
+        eas_attester_wallet: { address: "0x14d4d81233EAa95F071f514510661a2a873D83a1", role: "pays the daily EAS attestations on Base (Coherence days + receipts-log root)", note: "dedicated hot wallet, not the protocol owner" },
+        rotation_policy: {
+          trigger: "suspected compromise or scheduled rotation; never silent",
+          procedure: [
+            "1. New keypair generated; new verifier_key published here, in /log/checkpoint and in llms.txt with the rotation date.",
+            "2. The last checkpoint signed by the OLD key is sealed on Base via EAS (same schema) so the hand-over point is on-chain.",
+            "3. The old verifier_key stays listed under retired_keys with its valid_until and last_tree_size; receipts issued before that size verify with the old key.",
+            "4. The new key signs a checkpoint over the SAME tree (no new log, no re-indexing): inclusion proofs of old receipts remain valid against new checkpoints.",
+          ],
+          retired_keys: [],
+          last_rotation: null,
+        },
+      };
+    }
     default: return null;
   }
 }
@@ -966,12 +1071,12 @@ async function handleMessage(msg, env) {
       case "ping":
         return rpcResult(id, {});
       case "tools/list":
-        return rpcResult(id, { tools: TOOLS });
+        return rpcResult(id, { tools: TOOLS, _meta: SURFACE_META });
       case "resources/list":
         return rpcResult(id, { resources: RESOURCES });
       case "resources/read": {
         const uri = params && params.uri;
-        const body = readResource(uri);
+        const body = await readResource(uri, env);
         if (!body) return rpcError(id, -32002, `Resource not found: ${uri}`);
         return rpcResult(id, { contents: [{ uri, mimeType: "application/json", text: JSON.stringify(body, null, 2) }] });
       }
@@ -1055,11 +1160,34 @@ export default {
         stdio_twin: "npx @gblin-protocol/mcp-server (full toolset, free)",
         site: SITE,
         witness: "/witness (we cosign third-party transparency-log checkpoints; C2SP tlog-cosignature v1)",
+        audit: "/meta · /tools.json · /resources.json · /conformance · /v1/verify/:index (GET-only audit of the MCP surface)",
         receipts: "/log (AI Action Receipts: seal what your agent did — $0.01 via x402 at gblin.digital/api/x402/seal, demo via MCP tool seal_action)",
       });
     }
 
     // Public coherence report for humans, dashboards and crawlers. Free forever.
+    if (url.pathname === "/meta" && request.method === "GET") return json(await metaDoc(env), 200, { "cache-control": "public, max-age=300" });
+    if (url.pathname === "/tools.json" && request.method === "GET") return json({ manifest_hash: await manifestHash(), tools: TOOLS }, 200, { "cache-control": "public, max-age=300" });
+    if (url.pathname === "/resources.json" && request.method === "GET") return json({ manifest_hash: await manifestHash(), resources: RESOURCES }, 200, { "cache-control": "public, max-age=300" });
+    if (url.pathname === "/conformance" && request.method === "GET") return json(await conformanceDoc(env), 200, { "cache-control": "public, max-age=120" });
+    if (url.pathname.startsWith("/v1/verify/") && request.method === "GET") {
+      const idx = Number(url.pathname.slice("/v1/verify/".length));
+      const r = await getReceipt(env, idx);
+      if (r.status !== 200) return json({ error: r.error }, r.status);
+      const v = await verifyReceipt(r.receipt);
+      const byName = Object.fromEntries(v.checks.map((c) => [c.name, c.ok]));
+      const a = await anchorConsistency(env);
+      return json({
+        index: idx, tree_size: r.receipt.tree_size,
+        signature_valid: !!byName.signature, leaf_valid: !!byName.leaf, inclusion_valid: !!byName.inclusion_proof,
+        checkpoint_valid: !!byName.checkpoint, verifier_key_valid: !!byName.verifier_key,
+        anchor_found: a.anchor_found, anchor_root_matches: a.anchor_root_matches, anchored_tree_size: a.anchored_tree_size, anchor_tx: a.anchor_tx,
+        root_covers_this_receipt: a.anchor_found && idx < a.anchored_tree_size,
+        provenance_level: r.receipt.provenance.level, demo: !!r.receipt.payload.demo,
+        valid: v.valid, errors: v.errors,
+        note: "Cryptographic checks are recomputed server-side from the receipt alone (same math as verify_receipt / verify-receipt.mjs); anchor_root_matches recomputes the root at anchored_tree_size from the log and compares it with the root written on Base. Trust model: re-run verify-receipt.mjs offline if you do not trust this server.",
+      }, 200, { "cache-control": "public, max-age=60" });
+    }
     if (url.pathname === "/coherence" && request.method === "GET") {
       return json(await coherenceReport(env));
     }
