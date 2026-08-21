@@ -44,7 +44,7 @@ const FALLBACK_RPCS = [
 ];
 const SITE = "https://gblin.digital";
 const SUPPORTED_PROTOCOLS = ["2025-06-18", "2025-03-26", "2024-11-05"];
-const SERVER_INFO = { name: "gblin-mcp-http", version: "0.3.2" };
+const SERVER_INFO = { name: "gblin-mcp-http", version: "0.4.0" };
 
 // ── Tools ───────────────────────────────────────────────────────────────────
 
@@ -958,6 +958,7 @@ const SURFACE_META = {
     note: "Different, larger tool set: the 10 treasury/governance tools (get_treasury_state, quote_safe_swap, swap_gblin_to_usdc_jit, invest_usdc_to_gblin, analyze_treasury_health, get_governance_state, share_skill_with_peer, find_keeper_bounty, verify_risk_attestation) plus get_market_risk_regime, and 3 receipts tools (seal_action_demo, get_receipt, how_to_seal_paid). Only get_market_risk_regime and get_receipt behave identically here; this hosted server adds verify_receipt and the GET audit surface.",
   },
   resources: ["gblin://howto/attestation", "gblin://howto/seal", "gblin://limits", "gblin://keys"],
+  prompts: ["risk_gate", "seal_and_verify"],
   get_audit_urls: { meta: "/meta", tools: "/tools.json", resources: "/resources.json", conformance: "/conformance", verify: "/v1/verify/:index" },
 };
 // Canonical manifest hash (tools + resources), so docs and Smithery can be checked against the live surface.
@@ -975,6 +976,7 @@ async function metaDoc(env) {
     endpoint: "https://gblin-mcp.gblin-mcp-worker.workers.dev/mcp",
     tool_count: TOOLS.length, tool_names: TOOLS.map((t) => t.name),
     resource_count: RESOURCES.length, resource_uris: RESOURCES.map((r) => r.uri),
+    prompt_count: PROMPTS.length, prompt_names: PROMPTS.map((p) => p.name),
     manifest_hash: await manifestHash(),
     paid_over_mcp: false, auth_required: false, rate_limit_rpm_per_ip: 60,
     sibling_package: SURFACE_META.sibling_package,
@@ -986,11 +988,11 @@ async function conformanceDoc(env) {
   const meta = await metaDoc(env);
   return {
     about: "GET-able conformance fixture of the hosted MCP surface: identical data to tools/list and resources/list, plus error shapes and representative outputs. Lets an auditor without POST capability check the live surface.",
-    meta, tools: TOOLS, resources: RESOURCES,
+    meta, tools: TOOLS, resources: RESOURCES, prompts: PROMPTS,
     jsonrpc_errors: [
       { code: -32700, when: "body is not JSON" }, { code: -32600, when: "not a JSON-RPC 2.0 request" },
       { code: -32601, when: "unknown method" }, { code: -32602, when: "unknown tool, bad arguments, or seal_action mode != demo" },
-      { code: -32002, when: "unknown resource uri" }, { code: -32603, when: "tool threw (e.g. log unavailable)" },
+      { code: -32002, when: "unknown resource uri" }, { code: -32602, when: "unknown prompt name" }, { code: -32603, when: "tool threw (e.g. log unavailable)" },
     ],
     http: { get_mcp: "405 (stateless: POST only)", rate_limited: "429 after 60 req/min/IP", disabled: "503 when MCP_DISABLED" },
     examples: {
@@ -999,6 +1001,68 @@ async function conformanceDoc(env) {
       resource_limits: await readResource("gblin://limits", env),
     },
   };
+}
+
+// MCP prompts: ready-made workflows built from this server's own tools.
+const PROMPTS = [
+  {
+    name: "risk_gate",
+    title: "Risk gate before deploying capital",
+    description: "Check the live on-chain risk regime and decide whether to deploy capital, reduce, or stand down — with the rule stated up front so the decision is auditable.",
+    arguments: [
+      { name: "action", description: "What you are about to do (e.g. 'buy 500 USDC of ETH')", required: true },
+      { name: "risk_budget", description: "How much you are willing to lose on this action (optional)", required: false },
+    ],
+  },
+  {
+    name: "seal_and_verify",
+    title: "Seal an AI action and verify the receipt",
+    description: "Seal the hashes of an action into the public transparency log, then verify the returned receipt with pure math, and state plainly what the receipt does and does not prove.",
+    arguments: [
+      { name: "action", description: "Short public label for what the AI did", required: true },
+      { name: "input_hash", description: "sha256 hex (64 chars) of the input", required: true },
+      { name: "output_hash", description: "sha256 hex of the output (optional)", required: false },
+    ],
+  },
+];
+
+function getPrompt(name, args = {}) {
+  const a = (k, d = "") => (typeof args[k] === "string" && args[k].trim() ? args[k].trim() : d);
+  if (name === "risk_gate") {
+    const budget = a("risk_budget");
+    return {
+      description: "Risk gate: regime first, decision second.",
+      messages: [{ role: "user", content: { type: "text", text:
+`Before doing this, run the risk gate.
+
+Intended action: ${a("action", "(unspecified)")}${budget ? `\nRisk budget: ${budget}` : ""}
+
+1. Call get_market_risk_regime.
+2. Apply this rule, stated before you see the answer:
+   - regime "calm"     -> proceed as intended
+   - regime "elevated" -> proceed at reduced size, or wait
+   - regime "crash"    -> stand down; do not deploy new capital
+3. Answer in this order: regime and severity_pct, the rule branch you landed on, the decision, and the timestamp/source of the reading.
+4. Say explicitly that this reading is FREE and UNSIGNED. If you need a proof you can attach and someone else can verify offline, read the resource gblin://howto/attestation and buy the signed x402 attestation instead.` } }],
+    };
+  }
+  if (name === "seal_and_verify") {
+    const out = a("output_hash");
+    return {
+      description: "Seal an action, then verify the receipt without trusting the server.",
+      messages: [{ role: "user", content: { type: "text", text:
+`Seal this action and verify the result.
+
+action: ${a("action", "(unspecified)")}
+input_hash: ${a("input_hash", "(missing - compute sha256 of the input first)")}${out ? `\noutput_hash: ${out}` : ""}
+
+1. Call seal_action with mode "demo" and those fields. Remember: the action label and any agent_id/tool/meta you send are PUBLISHED in a public log — identifiers only, never secrets. Only hashes carry the input/output.
+2. Pass the returned receipt to verify_receipt and report each check (leaf, signature, inclusion proof, checkpoint, verifier key).
+3. Read receipt.anchor: say whether root_covers_this_receipt is true, and that only the tree ROOT is written on-chain (daily EAS on Base), never the individual receipt.
+4. Close with the honest limit: a valid receipt proves the record existed at that time in that log — it does NOT prove the action really happened (provenance is self-reported).` } }],
+    };
+  }
+  return null;
 }
 
 async function readResource(uri, env) {
@@ -1067,16 +1131,24 @@ async function handleMessage(msg, env) {
           : SUPPORTED_PROTOCOLS[0];
         return rpcResult(id, {
           protocolVersion,
-          capabilities: { tools: {}, resources: {} },
+          capabilities: { tools: {}, resources: {}, prompts: {} },
           serverInfo: SERVER_INFO,
           instructions:
-            "GBLIN hosted MCP (stateless, no auth, 60 req/min/IP). Free tools: get_market_risk_regime (live calm|elevated|crash from the on-chain Crash Shield), get_attestation_sample, get_agent_economy_stats, get_protocol_info, get_coherence_report, and AI Action Receipts: seal_action (demo, 5/day/IP), get_receipt, verify_receipt (pure math). Paid things are x402 HTTP endpoints, never MCP calls: read resources gblin://howto/attestation, gblin://howto/seal, gblin://limits. The stdio package @gblin-protocol/mcp-server is a different, larger toolset (treasury/swap tools).",
+            "GBLIN hosted MCP (stateless, no auth, 60 req/min/IP). Free tools: get_market_risk_regime (live calm|elevated|crash from the on-chain Crash Shield), get_attestation_sample, get_agent_economy_stats, get_protocol_info, get_coherence_report, and AI Action Receipts: seal_action (demo, 5/day/IP), get_receipt, verify_receipt (pure math). Paid things are x402 HTTP endpoints, never MCP calls: read resources gblin://howto/attestation, gblin://howto/seal, gblin://limits, gblin://keys. Two ready-made prompts: risk_gate, seal_and_verify. The stdio package @gblin-protocol/mcp-server is a different, larger toolset (treasury/swap tools).",
         });
       }
       case "ping":
         return rpcResult(id, {});
       case "tools/list":
         return rpcResult(id, { tools: TOOLS, _meta: SURFACE_META });
+      case "prompts/list":
+        return rpcResult(id, { prompts: PROMPTS });
+      case "prompts/get": {
+        const pname = params && params.name;
+        const body = getPrompt(pname, (params && params.arguments) || {});
+        if (!body) return rpcError(id, -32602, `Unknown prompt: ${pname}`);
+        return rpcResult(id, body);
+      }
       case "resources/list":
         return rpcResult(id, { resources: RESOURCES });
       case "resources/read": {
