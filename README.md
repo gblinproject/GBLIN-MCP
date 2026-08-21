@@ -22,7 +22,7 @@
 
 ▶️ **Runnable full-cycle demo** (read-only, no keys): `npx tsx examples/full-cycle.ts` — live against Base: treasury state → risk regime → attestation verified offline → invest calldata → JIT redemption calldata. [Source](examples/full-cycle.ts).
 
-🌐 **Hosted MCP (Streamable HTTP, no install):** `https://gblin-mcp.gblin-mcp-worker.workers.dev/mcp` — **8 free tools** in a dot-notation tree, no auth, no session: `risk.regime.get`, `risk.attestation.sample`, `protocol.economy.stats`, `protocol.info.get`, `coherence.report.get`, plus AI Action Receipts (`receipts.entry.seal` demo 5/day/IP, `receipts.entry.get`, `receipts.entry.verify` — pure-math verification, no trust in this server). Two prompts: `risk_gate`, `seal_and_verify`. The pre-rename flat names still work as unlisted aliases until 2026-11-21. Docs are **MCP resources**, not tools: `gblin://howto/attestation`, `gblin://howto/seal`, `gblin://limits`, `gblin://keys` (verifier keys + key-rotation policy). Nothing is paid over MCP.
+🌐 **Hosted MCP (Streamable HTTP, no install):** `https://gblin-mcp.gblin-mcp-worker.workers.dev/mcp` — **8 free tools** in a dot-notation tree, no auth, no session: `risk.regime`, `risk.attestation_sample`, `protocol.stats`, `protocol.info`, `coherence.report`, plus AI Action Receipts (`receipts.seal` demo 5/day/IP, `receipts.get`, `receipts.verify` — pure-math verification, no trust in this server). Two prompts: `risk_gate`, `seal_and_verify`. The pre-rename flat names still work as unlisted aliases until 2026-11-21. Docs are **MCP resources**, not tools: `gblin://howto/attestation`, `gblin://howto/seal`, `gblin://limits`, `gblin://keys` (verifier keys + key-rotation policy). Nothing is paid over MCP.
 > **GET-only audit** (for reviewers and clients that cannot POST): [`/meta`](https://gblin-mcp.gblin-mcp-worker.workers.dev/meta) (counts + `manifest_hash`) · [`/tools.json`](https://gblin-mcp.gblin-mcp-worker.workers.dev/tools.json) · [`/resources.json`](https://gblin-mcp.gblin-mcp-worker.workers.dev/resources.json) · [`/conformance`](https://gblin-mcp.gblin-mcp-worker.workers.dev/conformance) · [`/v1/verify/:index`](https://gblin-mcp.gblin-mcp-worker.workers.dev/v1/verify/0) (per-check booleans + on-chain anchor consistency).
 > This hosted surface is **deliberately different** from the npm stdio package below (13 tools, treasury/governance included). Also on [Smithery](https://smithery.ai/servers/gblin-protocol/mcp). Source in [`worker/`](worker/).
 
@@ -68,7 +68,7 @@ canonical `{"a":null,"b":1}` → leaf = `SHA256(0x00 || canonical_bytes)`. The
 receipt signature is Ed25519 over `"gblin-receipt/v1\n" + canonical`.
 
 - Seal (paid, unlimited): `POST https://gblin.digital/api/x402/seal` — $0.01 USDC via x402.
-- Seal (demo, 5/day/IP): `POST <worker>/v1/seal-demo` or hosted MCP tool `receipts.entry.seal` (verify with `receipts.entry.verify`).
+- Seal (demo, 5/day/IP): `POST <worker>/v1/seal-demo` or hosted MCP tool `receipts.seal` (verify with `receipts.verify`).
 - Read free forever: `<worker>/v1/receipt/:index` · `/log` · `/log/checkpoint` · `/log/proof/:index` · human page `/receipt/:index`.
 - Daily EAS anchor on Base of the tree root (verifiable on base.easscan.org, schema `0x9f433a96…`, promiseId `keccak256("gblin-receipts-log")`).
 - **Offline verifier, zero dependencies:** [`verify-receipt.mjs`](./verify-receipt.mjs) — `node verify-receipt.mjs receipt.json`.
@@ -85,7 +85,7 @@ Worker: `<worker>` = `https://gblin-mcp.gblin-mcp-worker.workers.dev`.
 
 GBLIN pre-registers hash-pinned public promises, then runs an automaton that probes them every 10 minutes and seals each closed day as an [EAS attestation](https://base.easscan.org/schema/view/0x9f433a96467ab75530009970e5aa938ec94d8a49f08f66e7381822d557b448ef) on Base. Reading is free forever; the paid service is being observed — the certifier submits itself to its own instrument first.
 
-- **Free report:** [`/coherence`](https://gblin-mcp.gblin-mcp-worker.workers.dev/coherence) (JSON) or the hosted MCP tool `coherence.report.get`.
+- **Free report:** [`/coherence`](https://gblin-mcp.gblin-mcp-worker.workers.dev/coherence) (JSON) or the hosted MCP tool `coherence.report`.
 - **Live promises:** P1 (uptime of the paid Risk Attestation endpoint) and P2 (honesty of the public agent-economy counters, with our own wallets disclosed and excluded).
 - **On-chain:** each closed day is sealed as an EAS attestation on Base by a dedicated observer wallet. GBLIN is a discoverable ERC-8004 agent (#59286).
 
