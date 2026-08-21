@@ -47,8 +47,10 @@ The problem this attacks is the #1 barrier to AI adoption in 2026: **nobody can
 prove, after the fact, exactly what an AI did** (surveys: workers burn 2–4 h/week
 verifying AI output; 70% of orgs say they cannot govern their agents). Our answer
 is the smallest honest primitive: a public, append-only **RFC 6962 transparency
-log** for AI actions. You send **hashes only** (never content); you get back a
-portable receipt any third party can verify offline, forever.
+log** for AI actions. Input and output go in as **hashes only** (never content);
+the short `action` label, `agent_id`, `tool` and `meta` strings you send are
+published in the public log — put identifiers there, never secrets. You get back
+a portable receipt any third party can verify offline, forever.
 
 ```
 receipt = canonical payload
@@ -57,16 +59,25 @@ receipt = canonical payload
         + C2SP signed checkpoint       (origin, tree size, root)
 ```
 
+Canonicalization is frozen as **`gblin-canonical-json/1`**: object keys sorted by
+UTF-16 code unit, no whitespace, `JSON.stringify` semantics for primitives,
+recursion for objects/arrays. Test vector: payload `{"b":1,"a":null}` →
+canonical `{"a":null,"b":1}` → leaf = `SHA256(0x00 || canonical_bytes)`. The
+receipt signature is Ed25519 over `"gblin-receipt/v1\n" + canonical`.
+
 - Seal (paid, unlimited): `POST https://gblin.digital/api/x402/seal` — $0.01 USDC via x402.
 - Seal (demo, 5/day/IP): `POST <worker>/v1/seal-demo` or MCP tool `seal_action_demo`.
 - Read free forever: `<worker>/v1/receipt/:index` · `/log` · `/log/checkpoint` · `/log/proof/:index` · human page `/receipt/:index`.
 - Daily EAS anchor on Base of the tree root (verifiable on base.easscan.org, schema `0x9f433a96…`, promiseId `keccak256("gblin-receipts-log")`).
 - **Offline verifier, zero dependencies:** [`verify-receipt.mjs`](./verify-receipt.mjs) — `node verify-receipt.mjs receipt.json`.
 
-A seal proves **existence and time**, independently witnessed (the same C2SP
-witness network that cosigns transparency logs — we already witness-exchange
-with a third-party log operator). It is **not** a compliance certificate and
-**not** an endorsement of the content. Worker: `<worker>` = `https://gblin-mcp.gblin-mcp-worker.workers.dev`.
+A seal proves **existence and time** in a signed append-only log whose root is
+anchored daily on Base. The checkpoint is currently signed by the log operator
+(us); **independent witness cosigning is an open invitation** — we already
+cosign a third-party transparency log (C2SP tlog-witness) and will list any
+witness that cosigns ours. Until then, honest wording: operator-signed, chain-anchored.
+It is **not** a compliance certificate and **not** an endorsement of the content.
+Worker: `<worker>` = `https://gblin-mcp.gblin-mcp-worker.workers.dev`.
 
 ## Coherence Proof — verify GBLIN keeps its promises
 

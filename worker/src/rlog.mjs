@@ -192,7 +192,7 @@ export async function sealAction(env, input, { demo = false } = {}) {
       inclusion_proof: proof,
       checkpoint,
       verify: "offline: see verify-receipt.mjs in github.com/gblinproject/gblin-treasury-risk-regime (zero deps)",
-      note: "Evidence of existence and time, independently witnessed — NOT a compliance certificate and NOT an endorsement of the content.",
+      note: "Evidence of existence and time in a signed append-only log, root anchored daily on Base (EAS) — NOT a compliance certificate and NOT an endorsement of the content. The action/agent_id/tool/meta strings you send are published in the public log: put identifiers there, never secrets; input/output go in as hashes only.",
     },
   };
 }
@@ -206,11 +206,15 @@ export async function getReceipt(env, index) {
   const root = await treeRoot(env, N);
   const [checkpoint, proof] = await Promise.all([signedCheckpoint(env, N, root), proofFor(env, index, N)]);
   const kp = parseKey(env.RLOG_KEY);
+  // Ed25519 è deterministica: ri-firmare il canonical dà la stessa firma del seal originale
+  const sig = new Uint8Array(await crypto.subtle.sign(
+    { name: "Ed25519" }, await signer(kp), te.encode("gblin-receipt/v1\n" + canonical)));
   return {
     status: 200,
     receipt: {
       format: "gblin-receipt/v1", payload: JSON.parse(canonical),
       leaf: b64(await leafHash(te.encode(canonical))), index, tree_size: N, root: b64(root),
+      signature: b64(sig),
       verifier_key: await rlogVerifierKey(kp.pub),
       inclusion_proof: proof, checkpoint,
     },

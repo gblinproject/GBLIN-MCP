@@ -51,35 +51,19 @@ const leaf = await sha256(cat(Uint8Array.of(0x00), te.encode(canonical)));
 if (b64(leaf) !== receipt.leaf) die("leaf hash does not match canonical payload");
 ok("leaf = SHA256(0x00 || canonical(payload))");
 
-// (2) receipt signature (present on freshly-sealed receipts; /v1/receipt omits it)
+// (2) receipt signature — REQUIRED (both /v1/seal* and /v1/receipt return it)
 const key = await crypto.subtle.importKey("raw", pub, { name: "Ed25519" }, false, ["verify"]);
-if (receipt.signature) {
+if (!receipt.signature) die("receipt has no signature (re-fetch it from /v1/receipt/:index)");
+{
   const good = await crypto.subtle.verify({ name: "Ed25519" }, key, unb64(receipt.signature), te.encode("gblin-receipt/v1\n" + canonical));
   if (!good) die("receipt signature invalid");
   ok("receipt Ed25519 signature valid");
 }
 
-// (3) inclusion proof
-let h = leaf, idx = receipt.index, size = receipt.tree_size;
-let lo = 0, hi = size;
-for (const pB64 of receipt.inclusion_proof) {
-  const sib = unb64(pB64);
-  let k = 1; while (k * 2 < hi - lo) k *= 2;
-  if (idx < lo + k) { h = await sha256(cat(Uint8Array.of(0x01), h, sib)); hi = lo + k; }
-  else { h = await sha256(cat(Uint8Array.of(0x01), sib, h)); lo = lo + k; }
-}
-// NB: path is leaf→root; recompute bounds properly (redo forward):
+// (3) inclusion proof — rebuild leaf→root walking the RFC 6962 recursion order
+const size = receipt.tree_size;
 {
   const proof = receipt.inclusion_proof.map(unb64);
-  const rec = async (i, a, b, d) => {
-    if (b - a === 1) return leaf;
-    let k = 1; while (k * 2 < b - a) k *= 2;
-    if (i < a + k) { const L = await rec(i, a, a + k, d); return sha256(cat(Uint8Array.of(0x01), L, proof[d.n++] ?? die("proof too short"))); }
-    const R = await rec(i, a + k, b, d);
-    return sha256(cat(Uint8Array.of(0x01), proof[d.n++] ?? die("proof too short"), R));
-  };
-  // proof array is ordered leaf-upward; rebuild with an index counter walking the same recursion order
-  const d = { n: 0 };
   const order = [];
   const collect = (i, a, b) => { if (b - a === 1) return; let k=1; while (k*2 < b-a) k*=2; if (i < a+k) { collect(i,a,a+k); order.push(["R",a+k,b]); } else { collect(i,a+k,b); order.push(["L",a,a+k]); } };
   collect(receipt.index, 0, size);

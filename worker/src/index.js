@@ -174,7 +174,7 @@ const TOOLS = [
   {
     name: "seal_action_demo",
     description:
-      "AI ACTION RECEIPTS (demo, 5/day/IP): seal the HASHES of an AI action into GBLIN's public append-only transparency log and get back a portable receipt — Ed25519 signature + RFC 6962 inclusion proof + C2SP signed checkpoint, root anchored daily on Base via EAS. Send hashes only, never content. Proves existence and time, independently witnessed — not a compliance certificate. Unlimited seals: $0.01 via x402 (see how_to_seal_paid).",
+      "AI ACTION RECEIPTS (demo, 5/day/IP): seal the HASHES of an AI action into GBLIN's public append-only transparency log and get back a portable receipt — Ed25519 signature + RFC 6962 inclusion proof + C2SP signed checkpoint, root anchored daily on Base via EAS. Input/output go in as hashes only; the action/agent_id/tool/meta strings you send are published in the public log (identifiers, never secrets). Proves existence and time — not a compliance certificate. Independent witness cosigning of the checkpoint: invitation open. Unlimited seals: $0.01 via x402 (see how_to_seal_paid).",
     inputSchema: {
       type: "object",
       properties: {
@@ -830,7 +830,7 @@ async function callTool(name, env, args = {}) {
     }
     case "how_to_seal_paid":
       return {
-        what: "AI Action Receipts: a portable, signed, independently-witnessed receipt for any AI action. You send HASHES only (never content); you get back signature + RFC 6962 inclusion proof + C2SP checkpoint; the tree root is anchored daily on Base (EAS). Evidence of existence and time — NOT a compliance certificate.",
+        what: "AI Action Receipts: a portable, signed receipt for any AI action, in a public append-only transparency log. Input/output go in as HASHES only (the action label and metadata you send are published); you get back signature + RFC 6962 inclusion proof + C2SP signed checkpoint; the tree root is anchored daily on Base (EAS). Evidence of existence and time — NOT a compliance certificate. Independent witness cosigning: invitation open.",
         paid_endpoint: `${SITE}/api/x402/seal`,
         price: "0.01 USDC on Base via x402 (unlimited)",
         demo: "MCP tool seal_action_demo or POST https://gblin-mcp.gblin-mcp-worker.workers.dev/v1/seal-demo (5/day/IP, receipts marked demo:true)",
@@ -1043,7 +1043,7 @@ export default {
     if (url.pathname === "/log" && request.method === "GET") {
       const st = await rlogStatus(env);
       return json({ ...st,
-        what: "GBLIN AI Action Receipts — append-only RFC 6962 transparency log of sealed AI actions (hashes only, never content). A seal proves existence and time, independently witnessed; it is NOT a compliance certificate and NOT an endorsement.",
+        what: "GBLIN AI Action Receipts — signed append-only RFC 6962 transparency log of sealed AI actions (input/output as hashes only; the action label and metadata you send are published). A seal proves existence and time; root anchored daily on Base via EAS. It is NOT a compliance certificate and NOT an endorsement. Independent witness cosigning of the checkpoint: invitation open.",
         seal_paid: "POST https://gblin.digital/api/x402/seal ($0.01 USDC via x402)",
         seal_demo: "POST /v1/seal-demo (5/day/IP, marked demo:true)",
         read: "GET /v1/receipt/:index (free forever) · GET /log/proof/:index · GET /log/checkpoint",
@@ -1069,8 +1069,53 @@ export default {
            <tr><td class="k">leaf</td><td><code>${esc(r.receipt.leaf)}</code></td></tr>
            <tr><td class="k">tree</td><td>index ${idx} of ${r.receipt.tree_size} · root <code>${esc(r.receipt.root)}</code></td></tr></table>
            <div class="box"><b>Checkpoint (C2SP signed note)</b><pre>${esc(r.receipt.checkpoint)}</pre></div>
-           <p class="k">Verify offline with <a href="https://github.com/gblinproject/gblin-treasury-risk-regime">verify-receipt.mjs</a> — this page is a convenience, not the proof. A seal proves existence and time; it is not a compliance certificate.</p>
-           <p class="k">JSON: <a href="/v1/receipt/${idx}">/v1/receipt/${idx}</a> · <a href="/log">about this log</a></p>`
+           <div id="v" class="box">Verifying in your browser (WebCrypto)…</div>
+           <p class="k">The check above runs locally in your browser: it re-derives the leaf hash from the canonical payload, rebuilds the Merkle inclusion proof to the root and verifies both Ed25519 signatures. For zero-trust verification run <a href="https://github.com/gblinproject/gblin-treasury-risk-regime">verify-receipt.mjs</a> offline. A seal proves existence and time; it is not a compliance certificate.</p>
+           <p class="k">JSON: <a href="/v1/receipt/${idx}">/v1/receipt/${idx}</a> · <a href="/log">about this log</a></p>
+           <script>
+(async () => {
+  const el = document.getElementById("v");
+  const fail = (m) => { el.style.background="#7f1d1d"; el.style.color="#fff"; el.textContent = "\\u2717 verification FAILED in this browser: " + m; };
+  try {
+    const te = new TextEncoder();
+    const unb64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+    const b64 = (u) => btoa(String.fromCharCode(...u));
+    const cat = (...p) => { const o = new Uint8Array(p.reduce((a,x)=>a+x.length,0)); let i=0; for (const x of p){o.set(x,i);i+=x.length;} return o; };
+    const sha = async (u) => new Uint8Array(await crypto.subtle.digest("SHA-256", u));
+    const canon = (v) => v === null || typeof v !== "object" ? JSON.stringify(v)
+      : Array.isArray(v) ? "[" + v.map(canon).join(",") + "]"
+      : "{" + Object.keys(v).sort().map((k) => JSON.stringify(k) + ":" + canon(v[k])).join(",") + "}";
+    const j = await (await fetch("/v1/receipt/${idx}", { cache: "no-store" })).json();
+    const rec = j.receipt || j;
+    const m = /^([^+]+)\\+([0-9a-f]{8})\\+([A-Za-z0-9+\\/=]+)$/.exec(rec.verifier_key);
+    if (!m) return fail("bad verifier_key");
+    const keyRaw = unb64(m[3]);
+    if (keyRaw[0] !== 1) return fail("key alg");
+    const kh = (await sha(cat(te.encode(m[1] + "\\n"), keyRaw))).slice(0, 4);
+    if ([...kh].map((b)=>b.toString(16).padStart(2,"0")).join("") !== m[2]) return fail("verifier_key hash mismatch");
+    const canonical = canon(rec.payload);
+    const leaf = await sha(cat(Uint8Array.of(0), te.encode(canonical)));
+    if (b64(leaf) !== rec.leaf) return fail("leaf hash does not match canonical payload");
+    const key = await crypto.subtle.importKey("raw", keyRaw.slice(1), { name: "Ed25519" }, false, ["verify"]);
+    if (!rec.signature || !(await crypto.subtle.verify({ name: "Ed25519" }, key, unb64(rec.signature), te.encode("gblin-receipt/v1\\n" + canonical)))) return fail("receipt signature invalid or missing");
+    const proof = rec.inclusion_proof.map(unb64), order = [];
+    const collect = (i, a, b) => { if (b - a === 1) return; let k = 1; while (k*2 < b-a) k *= 2; if (i < a+k) { collect(i, a, a+k); order.push("R"); } else { collect(i, a+k, b); order.push("L"); } };
+    collect(rec.index, 0, rec.tree_size);
+    if (order.length !== proof.length) return fail("proof length mismatch");
+    let cur = leaf;
+    for (let j = 0; j < order.length; j++) cur = order[j] === "R" ? await sha(cat(Uint8Array.of(1), cur, proof[j])) : await sha(cat(Uint8Array.of(1), proof[j], cur));
+    if (b64(cur) !== rec.root) return fail("inclusion proof does not reach the root");
+    const note = rec.checkpoint, sep = note.indexOf("\\n\\n"), body = note.slice(0, sep + 1), ls = body.split("\\n");
+    if (ls[0] !== m[1] || Number(ls[1]) !== rec.tree_size || ls[2] !== rec.root) return fail("checkpoint inconsistent with receipt");
+    const sigLine = note.slice(sep + 2).split("\\n").find((l) => l.startsWith("\\u2014 " + m[1] + " "));
+    if (!sigLine) return fail("no checkpoint signature line");
+    const ps = unb64(sigLine.split(" ")[2]);
+    if (ps.length !== 68 || !(await crypto.subtle.verify({ name: "Ed25519" }, key, ps.slice(4), te.encode(body)))) return fail("checkpoint signature invalid");
+    el.style.background = "#14532d"; el.style.color = "#fff";
+    el.textContent = "\\u2713 verified in this browser: leaf, Ed25519 receipt signature, Merkle inclusion proof \\u2192 root, signed checkpoint (tree size " + rec.tree_size + ")";
+  } catch (e) { fail(String(e && e.message || e)); }
+})();
+</script>`
         : `<h1>Receipt not found</h1><p class="k">${esc(r.error)}</p>`;
       const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>GBLIN Receipt #${idx}</title>
 <style>body{font:15px/1.55 system-ui,sans-serif;max-width:860px;margin:2rem auto;padding:0 1rem;color:#1a1a1a;background:#fff}code,pre{font-family:ui-monospace,monospace;font-size:.82em;word-break:break-all;white-space:pre-wrap}table{border-collapse:collapse;width:100%}td{padding:.3rem .5rem;border-bottom:1px solid #e5e5e5;vertical-align:top}.k{color:#555}.box{background:#f6f6f6;border-radius:8px;padding:.9rem 1.1rem;margin:1rem 0}
