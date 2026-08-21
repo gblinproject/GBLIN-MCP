@@ -30,7 +30,7 @@ import { catalogTick, catalogReport, catalogFull, observatoryPage, observatoryJs
 // su loro invito. Zero costo: 1 lettura + 1 firma per tick; niente chain.
 // Secret WITNESS_KEY assente → disattivato in silenzio (fail-safe).
 import { witnessTick, witnessIndex, witnessLatestNote, witnessAddCheckpoint, witnessHistory, WITNESSED_LOGS } from "./witness.mjs";
-import { sealAction, getReceipt, rlogStatus, demoAllowed, treeRoot, signedCheckpoint, proofFor, RLOG_ORIGIN } from "./rlog.mjs";
+import { sealAction, getReceipt, rlogStatus, demoAllowed, treeRoot, signedCheckpoint, proofFor, verifyReceipt, RLOG_ORIGIN } from "./rlog.mjs";
 
 const GBLIN = "0x36C81d7E1966310F305eA637e761Cf77F90852f0";
 const BASKET_SELECTOR = "0x8c7e0875"; // basket(uint256)
@@ -44,7 +44,7 @@ const FALLBACK_RPCS = [
 ];
 const SITE = "https://gblin.digital";
 const SUPPORTED_PROTOCOLS = ["2025-06-18", "2025-03-26", "2024-11-05"];
-const SERVER_INFO = { name: "gblin-mcp-http", version: "0.1.0" };
+const SERVER_INFO = { name: "gblin-mcp-http", version: "0.2.0" };
 
 // ── Tools ───────────────────────────────────────────────────────────────────
 
@@ -57,11 +57,62 @@ const RO = {
   openWorldHint: true,
 };
 
+const RECEIPT_SCHEMA = {
+  type: "object",
+  properties: {
+    format: { type: "string", const: "gblin-receipt/v1" },
+    payload: {
+      type: "object",
+      description: "The signed, canonicalized record (gblin-canonical-json/1)",
+      properties: {
+        v: { type: "integer" }, log: { type: "string" }, index: { type: "integer" }, ts: { type: "string" },
+        action: { type: "string" }, agent_id: { type: ["string", "null"] }, tool: { type: ["string", "null"] },
+        input_hash: { type: "string" }, output_hash: { type: ["string", "null"] }, meta: {}, demo: { type: "boolean" },
+      },
+      required: ["v", "log", "index", "ts", "action", "input_hash"],
+    },
+    leaf: { type: "string", description: "base64 SHA256(0x00 || canonical)" },
+    index: { type: "integer" }, tree_size: { type: "integer" },
+    root: { type: "string", description: "base64 Merkle root at tree_size" },
+    signature: { type: "string", description: "base64 Ed25519 over 'gblin-receipt/v1\\n' + canonical" },
+    verifier_key: { type: "string", description: "C2SP note verifier key: origin+hash+base64(0x01||pub)" },
+    inclusion_proof: { type: "array", items: { type: "string" } },
+    checkpoint: { type: "string", description: "C2SP signed note (origin, size, root)" },
+    anchor: {
+      type: "object",
+      description: "Latest daily EAS anchor of the tree root on Base and whether it already covers this receipt",
+      properties: {
+        chain: { type: "string" }, method: { type: "string" }, eas_schema_uid: { type: "string" }, promise_id: { type: "string" },
+        last_anchor: { type: ["object", "null"], properties: { day: { type: "string" }, tree_size: { type: "integer" }, root: { type: "string" }, tx: { type: "string" } } },
+        covers_this_receipt: { type: "boolean" }, explorer: { type: "string" },
+      },
+      required: ["covers_this_receipt"],
+    },
+    provenance: {
+      type: "object",
+      description: "What the receipt does and does not prove",
+      properties: { level: { type: "string", enum: ["self-reported"] }, meaning: { type: "string" } },
+      required: ["level"],
+    },
+  },
+  required: ["format", "payload", "leaf", "index", "tree_size", "root", "signature", "verifier_key", "inclusion_proof", "checkpoint", "anchor", "provenance"],
+};
+
+// How-to documents are MCP RESOURCES, not tools (tools = capabilities, resources = reading material).
+const RESOURCES = [
+  { uri: "gblin://howto/attestation", name: "How to buy the signed risk attestation (x402)", mimeType: "application/json",
+    description: "Endpoint, price, x402 flow and offline verification of the EIP-712-signed Risk Attestation ($0.003 USDC on Base)." },
+  { uri: "gblin://howto/seal", name: "How to seal AI actions without limits (x402)", mimeType: "application/json",
+    description: "Paid seal endpoint ($0.01 USDC on Base via x402), fields, free reading routes and the offline verifier." },
+  { uri: "gblin://limits", name: "Rate limits and costs of this server", mimeType: "application/json",
+    description: "60 requests/min/IP on /mcp; seal_action demo 5/day/IP; all tools free; what is paid lives on x402 HTTP endpoints." },
+];
+
 const TOOLS = [
   {
     name: "get_market_risk_regime",
     description:
-      "When deciding whether to deploy capital, take risk, or STAND DOWN in a volatile market, call this first — the 'Risk Gate' pattern a third-party ERC-8004 agent runs in production daily (gblin.digital/risk-gate). Returns the current BTC/ETH risk regime (calm | elevated | crash) read live from GBLIN's on-chain Crash Shield on Base. Free, unsigned — for a signed, attachable proof buy the x402 attestation (see how_to_buy_live_attestation).",
+      "Current BTC/ETH risk regime (calm | elevated | crash) with a suggested posture, read live from GBLIN's on-chain Crash Shield on Base (60s cache). Free and unsigned; a signed, verifiable-offline version is a paid x402 endpoint (resource gblin://howto/attestation).",
     inputSchema: { type: "object", properties: {}, required: [] },
     annotations: { title: "Market risk regime (live, free)", ...RO },
     outputSchema: {
@@ -99,7 +150,7 @@ const TOOLS = [
   {
     name: "get_attestation_sample",
     description:
-      "FREE static sample of the paid Risk Attestation: identical shape and EIP-712 schema, sample:true, permanently expired. Wire your parser/verifier against this, then switch to the paid endpoint.",
+      "Static, permanently expired sample of the signed Risk Attestation (sample:true), same fields and EIP-712 schema as the paid one. Use it to build and test a parser/verifier.",
     inputSchema: { type: "object", properties: {}, required: [] },
     annotations: { title: "Attestation sample (free, expired)", ...RO },
     outputSchema: {
@@ -124,20 +175,31 @@ const TOOLS = [
   {
     name: "get_agent_economy_stats",
     description:
-      "Public GBLIN agent-economy observatory stats (x402 calls, payers, on-chain counters). Cached.",
+      "Cumulative public counters of GBLIN's x402 endpoints: paid calls, unique payer wallets, USDC earned, with methodology disclosure. Cached 5 min.",
     inputSchema: { type: "object", properties: {}, required: [] },
     annotations: { title: "Agent-economy stats (free, cached)", ...RO },
     outputSchema: {
       type: "object",
-      description:
-        "Observatory payload from gblin.digital/api/agent-stats — cumulative x402 call and payer counters with methodology notes",
-      additionalProperties: true,
+      properties: {
+        total_paid_calls: { type: "integer", description: "Settled x402 calls, cumulative" },
+        total_unique_agents: { type: "integer", description: "Distinct payer wallets, cumulative (our own wallets excluded)" },
+        total_usdc_earned: { type: "number", description: "USDC received, cumulative" },
+        _source: {
+          type: "object",
+          description: "Provenance and disclosure of the counters",
+          properties: {
+            name: { type: "string" }, url: { type: "string" }, data_endpoint: { type: "string" },
+            docs: { type: "string" }, license: { type: "string" }, disclosure: { type: "string" },
+          },
+        },
+      },
+      required: ["total_paid_calls", "total_unique_agents", "total_usdc_earned"],
     },
   },
   {
     name: "get_protocol_info",
     description:
-      "GBLIN protocol overview for agents (llms.txt): contracts, endpoints, prices, payment flow, field contract of the attestation.",
+      "GBLIN llms.txt as plain text: contract addresses, endpoints, prices, payment flow, field contract of the attestation.",
     inputSchema: { type: "object", properties: {}, required: [] },
     annotations: { title: "Protocol info / llms.txt (free)", ...RO },
     outputSchema: {
@@ -149,35 +211,13 @@ const TOOLS = [
     },
   },
   {
-    name: "how_to_buy_live_attestation",
+    name: "seal_action",
     description:
-      "Instructions for buying the live EIP-712-signed risk attestation over x402 ($0.003 USDC on Base) and verifying it offline.",
-    inputSchema: { type: "object", properties: {}, required: [] },
-    annotations: { title: "How to buy the signed attestation", ...RO },
-    outputSchema: {
-      type: "object",
-      properties: {
-        endpoint: { type: "string", description: "Paid x402 endpoint URL" },
-        price: { type: "string" },
-        flow: { type: "string", description: "Step-by-step x402 payment flow" },
-        free_sample: { type: "string", description: "Free integration-sample URL" },
-        verify_offline: { type: "string", description: "How to verify the attestation without trusting the server" },
-        stable_field_contract: {
-          type: "array",
-          items: { type: "string" },
-          description: "Field names guaranteed stable without versioning",
-        },
-      },
-      required: ["endpoint", "price", "flow"],
-    },
-  },
-  {
-    name: "seal_action_demo",
-    description:
-      "AI ACTION RECEIPTS (demo, 5/day/IP): seal the HASHES of an AI action into GBLIN's public append-only transparency log and get back a portable receipt — Ed25519 signature + RFC 6962 inclusion proof + operator-signed C2SP checkpoint, root anchored daily on Base via EAS. Input/output go in as hashes only; the action/agent_id/tool/meta strings you send are published in the public log (identifiers, never secrets). Proves existence and time — not a compliance certificate. Independent witness cosigning of the checkpoint: invitation open. Unlimited seals: $0.01 via x402 (see how_to_seal_paid).",
+      "Append the HASHES of an AI action to GBLIN's public RFC 6962 transparency log and return a portable receipt: Ed25519 signature, inclusion proof, operator-signed C2SP checkpoint, plus the latest on-chain anchor (EAS on Base, daily). mode=demo (the only mode over MCP): 5 seals/day/IP, receipts marked demo:true. Unlimited seals are a paid x402 HTTP endpoint (resource gblin://howto/seal). Provenance is self-reported: the receipt proves existence and time of the record, not that the action happened. The action/agent_id/tool/meta strings are PUBLISHED in the log: identifiers only, never secrets.",
     inputSchema: {
       type: "object",
       properties: {
+        mode: { type: "string", enum: ["demo"], default: "demo", description: "Only 'demo' is available over MCP (5/day/IP). Paid seals go through x402 HTTP." },
         action: { type: "string", description: "What the AI did, short label (<=128 chars)" },
         input_hash: { type: "string", description: "sha256 hex (64 chars) of the input/prompt" },
         output_hash: { type: "string", description: "sha256 hex of the output (optional)" },
@@ -188,35 +228,40 @@ const TOOLS = [
       required: ["action", "input_hash"],
     },
     annotations: { title: "Seal an AI action (demo receipt)", readOnlyHint: false, idempotentHint: false, openWorldHint: false },
-    outputSchema: {
-      type: "object",
-      properties: {
-        format: { type: "string" }, payload: { type: "object" },
-        leaf: { type: "string" }, index: { type: "integer" }, tree_size: { type: "integer" },
-        root: { type: "string" }, signature: { type: "string" }, verifier_key: { type: "string" },
-        inclusion_proof: { type: "array", items: { type: "string" } }, checkpoint: { type: "string" },
-      },
-      required: ["format", "payload", "index", "inclusion_proof", "checkpoint"],
-    },
+    outputSchema: RECEIPT_SCHEMA,
   },
   {
     name: "get_receipt",
-    description: "Fetch a sealed AI-action receipt by index from GBLIN's receipts transparency log, with a fresh inclusion proof and signed checkpoint. Free forever.",
-    inputSchema: { type: "object", properties: { index: { type: "integer", description: "Receipt index in the log" } }, required: ["index"] },
+    description: "Receipt #index from GBLIN's receipts log, re-signed (Ed25519 is deterministic) with a fresh inclusion proof, the current signed checkpoint and the latest on-chain anchor. Free.",
+    inputSchema: { type: "object", properties: { index: { type: "integer", minimum: 0, description: "Receipt index in the log" } }, required: ["index"] },
     annotations: { title: "Get a receipt by index", ...RO },
-    outputSchema: { type: "object", properties: { payload: { type: "object" }, inclusion_proof: { type: "array", items: { type: "string" } }, checkpoint: { type: "string" } }, required: ["payload", "checkpoint"] },
+    outputSchema: RECEIPT_SCHEMA,
   },
   {
-    name: "how_to_seal_paid",
-    description: "How to buy unlimited AI-action seals ($0.01 USDC via x402 on Base) and verify receipts offline with zero dependencies.",
-    inputSchema: { type: "object", properties: {}, required: [] },
-    annotations: { title: "How to seal (paid, unlimited)", ...RO },
-    outputSchema: { type: "object", properties: { paid_endpoint: { type: "string" }, price: { type: "string" }, fields: { type: "object" } }, required: ["paid_endpoint", "price"] },
+    name: "verify_receipt",
+    description: "Verify a gblin-receipt/v1 JSON with pure math (no log lookup, no trust in this server): leaf hash, Ed25519 signature, RFC 6962 inclusion proof, C2SP checkpoint signature, verifier-key hash. Same checks as the zero-dependency verify-receipt.mjs you can run offline.",
+    inputSchema: {
+      type: "object",
+      properties: { receipt: { type: "object", description: "The receipt JSON as returned by seal_action / get_receipt / GET /v1/receipt/:i (bare or wrapped in {receipt})" } },
+      required: ["receipt"],
+    },
+    annotations: { title: "Verify a receipt (pure math)", readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    outputSchema: {
+      type: "object",
+      properties: {
+        valid: { type: "boolean" },
+        format: { type: "string" }, index: { type: "integer" }, tree_size: { type: "integer" },
+        checks: { type: "array", items: { type: "object", properties: { name: { type: "string" }, ok: { type: "boolean" }, detail: { type: "string" } }, required: ["name", "ok"] } },
+        errors: { type: "array", items: { type: "string" } },
+        reminder: { type: "string" },
+      },
+      required: ["valid", "checks", "errors"],
+    },
   },
   {
     name: "get_coherence_report",
     description:
-      "Coherence Proof (free, forever): does this subject DO what it publicly promised? v0 observes GBLIN itself — pre-registered, hash-pinned promises (uptime of the paid attestation endpoint, honesty of public counters) probed every 10 minutes, with kept/violated tallies; each closed UTC day is sealed on Base as an EAS attestation (schema 0x9f433a96…, verifiable on base.easscan.org). The certifier submits itself to its own instrument first. Reading is free by design; being observed is the paid service.",
+      "Kept/violated tallies for GBLIN's pre-registered, hash-pinned promises (attestation uptime, counter honesty), probed every 10 minutes; each closed UTC day is sealed on Base as an EAS attestation (schema 0x9f433a96…). Self-observation only in v0. Free.",
     inputSchema: { type: "object", properties: {}, required: [] },
     annotations: { title: "Coherence report (promises vs conduct, free)", ...RO },
     outputSchema: {
@@ -778,7 +823,7 @@ async function computeRegime(env) {
     contract: GBLIN,
     chain_id: 8453,
     source: "GBLIN on-chain Crash Shield (Base mainnet), read live",
-    note: "Unsigned free reading. For a signed, attachable, verifiable-offline proof: how_to_buy_live_attestation.",
+    note: "Unsigned free reading. For a signed, attachable, verifiable-offline proof: resource gblin://howto/attestation.",
   };
 }
 
@@ -817,30 +862,44 @@ async function callTool(name, env, args = {}) {
     case "get_coherence_report":
       return await coherenceReport(env);
 
-    case "seal_action_demo": {
+    case "seal_action":
+    case "seal_action_demo": { // alias kept for clients that learned the old name (remove after 2026-09-21)
+      if (args.mode && args.mode !== "demo") throw Object.assign(new Error("only mode='demo' is available over MCP; paid seals: x402 HTTP endpoint (resource gblin://howto/seal)"), { code: -32602 });
       const r = await sealAction(env, args, { demo: true });
       if (r.status !== 200) throw new Error(r.error);
       return r.receipt;
     }
+    case "verify_receipt":
+      return verifyReceipt(args.receipt);
     case "get_receipt": {
       const idx = Number(args.index);
       const r = await getReceipt(env, idx);
       if (r.status !== 200) throw new Error(r.error);
       return r.receipt;
     }
-    case "how_to_seal_paid":
-      return {
+    case "how_to_seal_paid": // unlisted alias -> resource gblin://howto/seal (remove after 2026-09-21)
+      return howtoSeal();
+    case "how_to_buy_live_attestation": // unlisted alias -> resource gblin://howto/attestation (remove after 2026-09-21)
+      return howtoAttestation();
+    default:
+      throw Object.assign(new Error(`Unknown tool: ${name}`), { code: -32602 });
+  }
+}
+
+function howtoSeal() {
+  return {
         what: "AI Action Receipts: a portable, signed receipt for any AI action, in a public append-only transparency log. Input/output go in as HASHES only (the action label and metadata you send are published); you get back signature + RFC 6962 inclusion proof + operator-signed C2SP checkpoint; the tree root is anchored daily on Base (EAS). Evidence of existence and time — NOT a compliance certificate. Independent witness cosigning: invitation open.",
         paid_endpoint: `${SITE}/api/x402/seal`,
         price: "0.01 USDC on Base via x402 (unlimited)",
-        demo: "MCP tool seal_action_demo or POST https://gblin-mcp.gblin-mcp-worker.workers.dev/v1/seal-demo (5/day/IP, receipts marked demo:true)",
+        demo: "MCP tool seal_action (mode demo) or POST https://gblin-mcp.gblin-mcp-worker.workers.dev/v1/seal-demo (5/day/IP, receipts marked demo:true)",
         fields: { action: "string <=128 (required)", input_hash: "sha256 hex of your input (required)", output_hash: "sha256 hex (optional)", agent_id: "string <=128 (optional)", tool: "string <=128 (optional)", meta: "JSON <=512 chars (optional)" },
         read_free: "GET /v1/receipt/:index · /log/checkpoint · /log/proof/:index · human page /receipt/:index",
-        verify_offline: "verify-receipt.mjs in github.com/gblinproject/gblin-treasury-risk-regime — zero dependencies",
+        verify_offline: "MCP tool verify_receipt (pure math) or verify-receipt.mjs in github.com/gblinproject/gblin-treasury-risk-regime — zero dependencies",
       };
+}
 
-    case "how_to_buy_live_attestation":
-      return {
+function howtoAttestation() {
+  return {
         endpoint: `${SITE}/api/x402/attestation`,
         price: "0.003 USDC on Base (eip155:8453)",
         flow:
@@ -856,8 +915,20 @@ async function callTool(name, env, args = {}) {
           "expires_at",
         ],
       };
-    default:
-      throw Object.assign(new Error(`Unknown tool: ${name}`), { code: -32602 });
+}
+
+function readResource(uri) {
+  switch (uri) {
+    case "gblin://howto/attestation": return howtoAttestation();
+    case "gblin://howto/seal": return howtoSeal();
+    case "gblin://limits": return {
+      mcp_rate_limit: "60 requests per minute per IP (HTTP 429 beyond)",
+      seal_action_demo: "5 seals per day per IP, receipts marked demo:true",
+      tools: "all free, no auth, no session",
+      paid: { attestation: `${SITE}/api/x402/attestation ($0.003 USDC)`, seal: `${SITE}/api/x402/seal ($0.01 USDC)` },
+      kill_switch: "env MCP_DISABLED returns 503 for every request",
+    };
+    default: return null;
   }
 }
 
@@ -886,16 +957,24 @@ async function handleMessage(msg, env) {
           : SUPPORTED_PROTOCOLS[0];
         return rpcResult(id, {
           protocolVersion,
-          capabilities: { tools: {} },
+          capabilities: { tools: {}, resources: {} },
           serverInfo: SERVER_INFO,
           instructions:
-            "GBLIN Protocol on Base: free read-only tools — live market risk regime (calm|elevated|crash), the x402 uptime observatory (only ~1/3 of the catalog answers; our own endpoints sit in the same table), and a Coherence Proof sealed daily on Base via EAS. The signed risk attestation is a paid x402 endpoint (see how_to_buy_live_attestation). Everything is checkable on-chain; reading is free. Stateless server: no session required.",
+            "GBLIN hosted MCP (stateless, no auth, 60 req/min/IP). Free tools: get_market_risk_regime (live calm|elevated|crash from the on-chain Crash Shield), get_attestation_sample, get_agent_economy_stats, get_protocol_info, get_coherence_report, and AI Action Receipts: seal_action (demo, 5/day/IP), get_receipt, verify_receipt (pure math). Paid things are x402 HTTP endpoints, never MCP calls: read resources gblin://howto/attestation, gblin://howto/seal, gblin://limits. The stdio package @gblin-protocol/mcp-server is a different, larger toolset (treasury/swap tools).",
         });
       }
       case "ping":
         return rpcResult(id, {});
       case "tools/list":
         return rpcResult(id, { tools: TOOLS });
+      case "resources/list":
+        return rpcResult(id, { resources: RESOURCES });
+      case "resources/read": {
+        const uri = params && params.uri;
+        const body = readResource(uri);
+        if (!body) return rpcError(id, -32002, `Resource not found: ${uri}`);
+        return rpcResult(id, { contents: [{ uri, mimeType: "application/json", text: JSON.stringify(body, null, 2) }] });
+      }
       case "tools/call": {
         const name = params && params.name;
         try {
@@ -976,7 +1055,7 @@ export default {
         stdio_twin: "npx @gblin-protocol/mcp-server (full toolset, free)",
         site: SITE,
         witness: "/witness (we cosign third-party transparency-log checkpoints; C2SP tlog-cosignature v1)",
-        receipts: "/log (AI Action Receipts: seal what your agent did — $0.01 via x402 at gblin.digital/api/x402/seal, demo via MCP tool seal_action_demo)",
+        receipts: "/log (AI Action Receipts: seal what your agent did — $0.01 via x402 at gblin.digital/api/x402/seal, demo via MCP tool seal_action)",
       });
     }
 

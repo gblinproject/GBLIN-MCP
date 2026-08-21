@@ -67,6 +67,29 @@ export async function rlogVerifierKey(pub) {
   return `${RLOG_ORIGIN}+${hex(h)}+${b64(cat(Uint8Array.of(0x01), pub))}`;
 }
 
+// ---------- ancora on-chain + provenienza (additivi, fuori dal payload firmato) ----------
+export const RLOG_EAS_SCHEMA_UID = "0x9f433a96467ab75530009970e5aa938ec94d8a49f08f66e7381822d557b448ef";
+export const RLOG_PROMISE_LABEL = "gblin-receipts-log"; // promiseId = keccak256 di questa stringa
+// Stato dell'ultima ancora EAS del root su Base (scritta da rlogAnchorDaily in index.js).
+// `covers_this_receipt` = la foglia era già nell'albero quando il root è stato ancorato.
+export async function anchorInfo(env, index) {
+  let last = null;
+  try { last = JSON.parse((await env.COHERENCE.get("rlog:anchorLast")) || "null"); } catch { last = null; }
+  return {
+    chain: "base (eip155:8453)",
+    method: "EAS attestation of the tree root, once per UTC day, by the observer wallet",
+    eas_schema_uid: RLOG_EAS_SCHEMA_UID,
+    promise_id: `keccak256("${RLOG_PROMISE_LABEL}")`,
+    last_anchor: last ? { day: last.day, tree_size: last.size, root: last.root, tx: last.hash } : null,
+    covers_this_receipt: !!(last && typeof index === "number" && index < last.size),
+    explorer: `https://base.easscan.org/schema/view/${RLOG_EAS_SCHEMA_UID}`,
+  };
+}
+export const PROVENANCE = {
+  level: "self-reported",
+  meaning: "The sealer supplied action/input_hash/output_hash; the log proves they were recorded at this index and time. It does NOT prove the external action happened or that the hashes match any real input/output.",
+};
+
 // ---------- Merkle su KV (nodi congelati) ----------
 const nk = (l, i) => `rlog:node:${l}:${i}`;
 async function getNode(env, l, i) {
@@ -191,6 +214,8 @@ export async function sealAction(env, input, { demo = false } = {}) {
       verifier_key: await rlogVerifierKey(kp.pub),
       inclusion_proof: proof,
       checkpoint,
+      anchor: await anchorInfo(env, N),
+      provenance: PROVENANCE,
       verify: "offline: see verify-receipt.mjs in github.com/gblinproject/gblin-treasury-risk-regime (zero deps)",
       note: "Evidence of existence and time in a signed append-only log, root anchored daily on Base (EAS) — NOT a compliance certificate and NOT an endorsement of the content. The action/agent_id/tool/meta strings you send are published in the public log: put identifiers there, never secrets; input/output go in as hashes only.",
     },
@@ -217,6 +242,8 @@ export async function getReceipt(env, index) {
       signature: b64(sig),
       verifier_key: await rlogVerifierKey(kp.pub),
       inclusion_proof: proof, checkpoint,
+      anchor: await anchorInfo(env, index),
+      provenance: PROVENANCE,
     },
   };
 }
@@ -242,4 +269,65 @@ export async function demoAllowed(env, ip) {
   if (n >= DEMO_PER_DAY) return false;
   await env.COHERENCE.put(k, String(n + 1), { expirationTtl: 90000 });
   return true;
+}
+
+// ---------- verifica di una ricevuta (pure math: NON legge il KV, non si fida del server) ----------
+// Ritorna {valid, checks:[{name, ok, detail}], errors:[]}. Stessi 5 controlli di verify-receipt.mjs.
+export async function verifyReceipt(input) {
+  const r = (input && input.receipt) || input;
+  const checks = []; const errors = [];
+  const fail = (name, detail) => { checks.push({ name, ok: false, detail }); errors.push(`${name}: ${detail}`); };
+  const pass = (name, detail) => checks.push({ name, ok: true, detail });
+  const done = () => ({ valid: errors.length === 0, format: r && r.format, index: r && r.index, tree_size: r && r.tree_size, checks, errors,
+    reminder: "A valid receipt proves existence and time in the log, not the content or that the action happened. On-chain anchor: see receipt.anchor." });
+  try {
+    if (!r || typeof r !== "object") { fail("format", "receipt is not an object"); return done(); }
+    if (r.format !== "gblin-receipt/v1") { fail("format", `unknown format ${r.format}`); return done(); }
+    pass("format", "gblin-receipt/v1");
+    const m = /^([^+]+)\+([0-9a-f]{8})\+([A-Za-z0-9+/=]+)$/.exec(r.verifier_key || "");
+    if (!m) { fail("verifier_key", "malformed"); return done(); }
+    const keyRaw = unb64(m[3]);
+    if (keyRaw[0] !== 0x01) { fail("verifier_key", "alg is not Ed25519 note key (0x01)"); return done(); }
+    const pub = keyRaw.slice(1);
+    const kh = (await sha256(cat(te.encode(m[1] + "\n"), keyRaw))).slice(0, 4);
+    if (hex(kh) !== m[2]) { fail("verifier_key", "key hash mismatch"); return done(); }
+    pass("verifier_key", `${m[1]} (${m[2]})` + (m[1] === RLOG_ORIGIN ? "" : " — NOTE: not the GBLIN log origin"));
+    const canonical = canonicalize(r.payload);
+    const leaf = await leafHash(te.encode(canonical));
+    if (b64(leaf) !== r.leaf) fail("leaf", "leaf hash does not match canonical payload"); else pass("leaf", "SHA256(0x00 || canonical(payload))");
+    const key = await crypto.subtle.importKey("raw", pub, { name: "Ed25519" }, false, ["verify"]);
+    if (!r.signature) fail("signature", "missing (re-fetch from /v1/receipt/:index)");
+    else if (!(await crypto.subtle.verify({ name: "Ed25519" }, key, unb64(r.signature), te.encode("gblin-receipt/v1\n" + canonical)))) fail("signature", "invalid");
+    else pass("signature", "Ed25519 over gblin-receipt/v1 + canonical payload");
+    const size = Number(r.tree_size); const idx = Number(r.index);
+    if (!Array.isArray(r.inclusion_proof) || !(idx >= 0 && idx < size)) fail("inclusion_proof", "missing proof or index out of range");
+    else {
+      const proof = r.inclusion_proof.map(unb64); const order = [];
+      const collect = (i, a, b) => { if (b - a === 1) return; let k = 1; while (k * 2 < b - a) k *= 2; if (i < a + k) { collect(i, a, a + k); order.push(["R", a + k, b]); } else { collect(i, a + k, b); order.push(["L", a, a + k]); } };
+      collect(idx, 0, size);
+      if (order.length !== proof.length) fail("inclusion_proof", `length ${proof.length} != expected ${order.length}`);
+      else {
+        let cur = leaf;
+        for (let j = 0; j < order.length; j++) cur = order[j][0] === "R" ? await nodeHash(cur, proof[j]) : await nodeHash(proof[j], cur);
+        if (b64(cur) !== r.root) fail("inclusion_proof", "does not reach the stated root"); else pass("inclusion_proof", `leaf #${idx} -> root of tree size ${size}`);
+      }
+    }
+    const note = r.checkpoint || "";
+    const sep = note.indexOf("\n\n");
+    if (sep < 0) fail("checkpoint", "missing or malformed note");
+    else {
+      const body = note.slice(0, sep + 1); const lines = body.split("\n");
+      if (lines[0] !== m[1]) fail("checkpoint", "origin mismatch");
+      else if (Number(lines[1]) !== size) fail("checkpoint", "size != receipt tree_size");
+      else if (lines[2] !== r.root) fail("checkpoint", "root != receipt root");
+      else {
+        const sigLine = note.slice(sep + 2).split("\n").find((l) => l.startsWith("\u2014 " + m[1] + " "));
+        const ps = sigLine ? unb64(sigLine.split(" ")[2]) : null;
+        if (!ps || ps.length !== 68 || hex(ps.slice(0, 4)) !== m[2]) fail("checkpoint", "no valid signature line for origin");
+        else if (!(await crypto.subtle.verify({ name: "Ed25519" }, key, ps.slice(4), te.encode(body)))) fail("checkpoint", "signature invalid");
+        else pass("checkpoint", "C2SP signed note valid and consistent with receipt");
+      }
+    }
+  } catch (e) { fail("exception", String(e && e.message || e)); }
+  return done();
 }

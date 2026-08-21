@@ -66,7 +66,7 @@ canonical `{"a":null,"b":1}` → leaf = `SHA256(0x00 || canonical_bytes)`. The
 receipt signature is Ed25519 over `"gblin-receipt/v1\n" + canonical`.
 
 - Seal (paid, unlimited): `POST https://gblin.digital/api/x402/seal` — $0.01 USDC via x402.
-- Seal (demo, 5/day/IP): `POST <worker>/v1/seal-demo` or MCP tool `seal_action_demo`.
+- Seal (demo, 5/day/IP): `POST <worker>/v1/seal-demo` or MCP tool `seal_action` (verify with `verify_receipt`).
 - Read free forever: `<worker>/v1/receipt/:index` · `/log` · `/log/checkpoint` · `/log/proof/:index` · human page `/receipt/:index`.
 - Daily EAS anchor on Base of the tree root (verifiable on base.easscan.org, schema `0x9f433a96…`, promiseId `keccak256("gblin-receipts-log")`).
 - **Offline verifier, zero dependencies:** [`verify-receipt.mjs`](./verify-receipt.mjs) — `node verify-receipt.mjs receipt.json`.
