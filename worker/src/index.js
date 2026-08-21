@@ -30,6 +30,7 @@ import { catalogTick, catalogReport, catalogFull, observatoryPage, observatoryJs
 // su loro invito. Zero costo: 1 lettura + 1 firma per tick; niente chain.
 // Secret WITNESS_KEY assente → disattivato in silenzio (fail-safe).
 import { witnessTick, witnessIndex, witnessLatestNote, witnessAddCheckpoint, witnessHistory, WITNESSED_LOGS } from "./witness.mjs";
+import { sealAction, getReceipt, rlogStatus, demoAllowed, treeRoot, signedCheckpoint, proofFor, RLOG_ORIGIN } from "./rlog.mjs";
 
 const GBLIN = "0x36C81d7E1966310F305eA637e761Cf77F90852f0";
 const BASKET_SELECTOR = "0x8c7e0875"; // basket(uint256)
@@ -169,6 +170,48 @@ const TOOLS = [
       },
       required: ["endpoint", "price", "flow"],
     },
+  },
+  {
+    name: "seal_action_demo",
+    description:
+      "AI ACTION RECEIPTS (demo, 5/day/IP): seal the HASHES of an AI action into GBLIN's public append-only transparency log and get back a portable receipt — Ed25519 signature + RFC 6962 inclusion proof + C2SP signed checkpoint, root anchored daily on Base via EAS. Send hashes only, never content. Proves existence and time, independently witnessed — not a compliance certificate. Unlimited seals: $0.01 via x402 (see how_to_seal_paid).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        action: { type: "string", description: "What the AI did, short label (<=128 chars)" },
+        input_hash: { type: "string", description: "sha256 hex (64 chars) of the input/prompt" },
+        output_hash: { type: "string", description: "sha256 hex of the output (optional)" },
+        agent_id: { type: "string", description: "Your agent identifier (optional, <=128)" },
+        tool: { type: "string", description: "Tool/model used (optional, <=128)" },
+        meta: { type: "string", description: "Extra JSON, <=512 chars (optional)" },
+      },
+      required: ["action", "input_hash"],
+    },
+    annotations: { title: "Seal an AI action (demo receipt)", readOnlyHint: false, idempotentHint: false, openWorldHint: false },
+    outputSchema: {
+      type: "object",
+      properties: {
+        format: { type: "string" }, payload: { type: "object" },
+        leaf: { type: "string" }, index: { type: "integer" }, tree_size: { type: "integer" },
+        root: { type: "string" }, signature: { type: "string" }, verifier_key: { type: "string" },
+        inclusion_proof: { type: "array", items: { type: "string" } }, checkpoint: { type: "string" },
+      },
+      required: ["format", "payload", "index", "inclusion_proof", "checkpoint"],
+    },
+  },
+  {
+    name: "get_receipt",
+    description: "Fetch a sealed AI-action receipt by index from GBLIN's receipts transparency log, with a fresh inclusion proof and signed checkpoint. Free forever.",
+    inputSchema: { type: "object", properties: { index: { type: "integer", description: "Receipt index in the log" } }, required: ["index"] },
+    annotations: { title: "Get a receipt by index", ...RO },
+    outputSchema: { type: "object", properties: { payload: { type: "object" }, inclusion_proof: { type: "array", items: { type: "string" } }, checkpoint: { type: "string" } }, required: ["payload", "checkpoint"] },
+  },
+  {
+    name: "how_to_seal_paid",
+    description: "How to buy unlimited AI-action seals ($0.01 USDC via x402 on Base) and verify receipts offline with zero dependencies.",
+    inputSchema: { type: "object", properties: {}, required: [] },
+    annotations: { title: "How to seal (paid, unlimited)", ...RO },
+    outputSchema: { type: "object", properties: { paid_endpoint: { type: "string" }, price: { type: "string" }, fields: { type: "object" } }, required: ["paid_endpoint", "price"] },
   },
   {
     name: "get_coherence_report",
@@ -453,6 +496,49 @@ async function coherenceAttestClosedDay(env) {
   return complete;
 }
 
+
+// ── Ancora giornaliera del root del receipts-log su Base (EAS) ──────────────
+// Riusa schema/wallet della Coerenza: promiseId = keccak256("gblin-receipts-log"),
+// observations = tree size, evidenceURI = "root:<b64>@<size>". Idempotente per
+// giorno e solo se il log è cresciuto. Fail-safe: senza ATTESTER_KEY non fa nulla.
+async function rlogAnchorDaily(env) {
+  if (!env.COHERENCE || !env.ATTESTER_KEY || !env.RLOG_KEY) return true;
+  const today = utcDay();
+  if (await env.COHERENCE.get(`rlog:anchored:${today}`)) return true;
+  const N = Number((await env.COHERENCE.get("rlog:size")) || 0);
+  if (N === 0) return true;
+  const last = Number((await env.COHERENCE.get("rlog:anchoredSize")) || 0);
+  if (N === last) { await env.COHERENCE.put(`rlog:anchored:${today}`, "unchanged", { expirationTtl: 120 * 86400 }); return true; }
+  let viem, accounts, chains;
+  try { viem = await import("viem"); accounts = await import("viem/accounts"); chains = await import("viem/chains"); } catch { return false; }
+  const root = await treeRoot(env, N);
+  const rootB64 = btoa(String.fromCharCode(...root));
+  const key = env.ATTESTER_KEY.startsWith("0x") ? env.ATTESTER_KEY : "0x" + env.ATTESTER_KEY;
+  const account = accounts.privateKeyToAccount(key);
+  const rpcs = env.GBLIN_RPC_URL ? [env.GBLIN_RPC_URL, ...FALLBACK_RPCS] : FALLBACK_RPCS;
+  const transport = viem.fallback(rpcs.map((u) => viem.http(u)));
+  const pub = viem.createPublicClient({ chain: chains.base, transport });
+  const client = viem.createWalletClient({ account, chain: chains.base, transport });
+  const start = Math.floor(Date.parse(`${today}T00:00:00Z`) / 1000);
+  const promiseId = viem.keccak256(viem.toBytes("gblin-receipts-log"));
+  const encoded = viem.encodeAbiParameters(SCHEMA_FIELDS, [
+    SELF_SUBJECT, promiseId, BigInt(start), BigInt(start + 86399), N, 10000, 0,
+    `root:${rootB64}@${N} https://gblin-mcp.gblin-mcp-worker.workers.dev/log/checkpoint`,
+  ]);
+  try {
+    const nonce = await pub.getTransactionCount({ address: account.address });
+    const hash = await client.writeContract({
+      address: EAS_CONTRACT, abi: EAS_ATTEST_ABI, functionName: "attest", nonce,
+      args: [{ schema: SCHEMA_UID, data: { recipient: SELF_SUBJECT, expirationTime: 0n, revocable: true,
+        refUID: "0x0000000000000000000000000000000000000000000000000000000000000000", data: encoded, value: 0n } }],
+    });
+    await env.COHERENCE.put(`rlog:anchored:${today}`, hash, { expirationTtl: 120 * 86400 });
+    await env.COHERENCE.put("rlog:anchoredSize", String(N));
+    await env.COHERENCE.put("rlog:anchorLast", JSON.stringify({ day: today, size: N, root: rootB64, hash }));
+    return true;
+  } catch { return false; }
+}
+
 // One-shot "genesis" seal: attest the real cumulative window observed so far
 // (from first observation to now), honestly labelled as a partial genesis
 // window — never a full closed day. Used to write the very first on-chain proof
@@ -712,7 +798,7 @@ async function cachedRegime(env) {
 
 // ── Tool dispatch ───────────────────────────────────────────────────────────
 
-async function callTool(name, env) {
+async function callTool(name, env, args = {}) {
   switch (name) {
     case "get_market_risk_regime":
       return cachedRegime(env);
@@ -730,6 +816,28 @@ async function callTool(name, env) {
     }
     case "get_coherence_report":
       return await coherenceReport(env);
+
+    case "seal_action_demo": {
+      const r = await sealAction(env, args, { demo: true });
+      if (r.status !== 200) throw new Error(r.error);
+      return r.receipt;
+    }
+    case "get_receipt": {
+      const idx = Number(args.index);
+      const r = await getReceipt(env, idx);
+      if (r.status !== 200) throw new Error(r.error);
+      return r.receipt;
+    }
+    case "how_to_seal_paid":
+      return {
+        what: "AI Action Receipts: a portable, signed, independently-witnessed receipt for any AI action. You send HASHES only (never content); you get back signature + RFC 6962 inclusion proof + C2SP checkpoint; the tree root is anchored daily on Base (EAS). Evidence of existence and time — NOT a compliance certificate.",
+        paid_endpoint: `${SITE}/api/x402/seal`,
+        price: "0.01 USDC on Base via x402 (unlimited)",
+        demo: "MCP tool seal_action_demo or POST https://gblin-mcp.gblin-mcp-worker.workers.dev/v1/seal-demo (5/day/IP, receipts marked demo:true)",
+        fields: { action: "string <=128 (required)", input_hash: "sha256 hex of your input (required)", output_hash: "sha256 hex (optional)", agent_id: "string <=128 (optional)", tool: "string <=128 (optional)", meta: "JSON <=512 chars (optional)" },
+        read_free: "GET /v1/receipt/:index · /log/checkpoint · /log/proof/:index · human page /receipt/:index",
+        verify_offline: "verify-receipt.mjs in github.com/gblinproject/gblin-treasury-risk-regime — zero dependencies",
+      };
 
     case "how_to_buy_live_attestation":
       return {
@@ -791,7 +899,7 @@ async function handleMessage(msg, env) {
       case "tools/call": {
         const name = params && params.name;
         try {
-          const out = await callTool(name, env);
+          const out = await callTool(name, env, (params && params.arguments) || {});
           return rpcResult(id, {
             content: [{ type: "text", text: JSON.stringify(out, null, 2) }],
             structuredContent: out, // matches the tool's declared outputSchema
@@ -868,6 +976,7 @@ export default {
         stdio_twin: "npx @gblin-protocol/mcp-server (full toolset, free)",
         site: SITE,
         witness: "/witness (we cosign third-party transparency-log checkpoints; C2SP tlog-cosignature v1)",
+        receipts: "/log (AI Action Receipts: seal what your agent did — $0.01 via x402 at gblin.digital/api/x402/seal, demo via MCP tool seal_action_demo)",
       });
     }
 
@@ -900,6 +1009,73 @@ export default {
       return new Response(await observatoryBadge(env, url.searchParams.get("host")), {
         headers: { "content-type": "image/svg+xml", "cache-control": "public, max-age=600", ...CORS },
       });
+    }
+
+    // AI ACTION RECEIPTS — sigilli firmati+testimoniati per le azioni delle IA.
+    // Pagato: via webapp /api/x402/seal (x402 $0.01, inoltra qui col token).
+    // Demo: 5/giorno/IP, marcati demo:true. Lettura e verifica: gratis per sempre.
+    if (url.pathname === "/internal/seal" && request.method === "POST") {
+      const tok = url.searchParams.get("token") || "";
+      if (!env.CATALOG_TOKEN || tok !== env.CATALOG_TOKEN) return json({ error: "unauthorized" }, 401);
+      let body; try { body = await request.json(); } catch { return json({ error: "invalid JSON" }, 400); }
+      const r = await sealAction(env, body, { demo: false });
+      return json(r.status === 200 ? r.receipt : { error: r.error }, r.status, { "cache-control": "no-store" });
+    }
+    if (url.pathname === "/v1/seal-demo" && request.method === "POST") {
+      if (!(await demoAllowed(env, ip))) {
+        return json({ error: "demo limit reached (5/day/IP). For unlimited seals pay $0.01 via x402: POST https://gblin.digital/api/x402/seal" }, 429);
+      }
+      let body; try { body = await request.json(); } catch { return json({ error: "invalid JSON" }, 400); }
+      const r = await sealAction(env, body, { demo: true });
+      return json(r.status === 200 ? r.receipt : { error: r.error }, r.status, { "cache-control": "no-store" });
+    }
+    if (url.pathname.startsWith("/v1/receipt/") && request.method === "GET") {
+      const idx = Number(url.pathname.slice("/v1/receipt/".length));
+      if (!Number.isInteger(idx) || idx < 0) return json({ error: "bad index" }, 400);
+      const r = await getReceipt(env, idx);
+      return json(r.status === 200 ? r.receipt : { error: r.error }, r.status, { "cache-control": "public, max-age=60" });
+    }
+    if (url.pathname === "/log/checkpoint" && request.method === "GET") {
+      const st = await rlogStatus(env);
+      if (!st.checkpoint) return json({ error: "log empty or not armed", origin: st.origin, verifier_key: st.verifier_key }, 404);
+      return new Response(st.checkpoint, { headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store", ...CORS } });
+    }
+    if (url.pathname === "/log" && request.method === "GET") {
+      const st = await rlogStatus(env);
+      return json({ ...st,
+        what: "GBLIN AI Action Receipts — append-only RFC 6962 transparency log of sealed AI actions (hashes only, never content). A seal proves existence and time, independently witnessed; it is NOT a compliance certificate and NOT an endorsement.",
+        seal_paid: "POST https://gblin.digital/api/x402/seal ($0.01 USDC via x402)",
+        seal_demo: "POST /v1/seal-demo (5/day/IP, marked demo:true)",
+        read: "GET /v1/receipt/:index (free forever) · GET /log/proof/:index · GET /log/checkpoint",
+        explorer: "GET /receipt/:index (human page)",
+        anchor: "tree root anchored daily on Base via EAS (schema " + "0x9f433a96..., promiseId keccak256('gblin-receipts-log'))",
+        offline_verifier: "verify-receipt.mjs in github.com/gblinproject/gblin-treasury-risk-regime (zero deps)",
+      }, 200, { "cache-control": "public, max-age=60" });
+    }
+    if (url.pathname.startsWith("/log/proof/") && request.method === "GET") {
+      const idx = Number(url.pathname.slice("/log/proof/".length));
+      const N = Number((await env.COHERENCE?.get("rlog:size")) || 0);
+      if (!Number.isInteger(idx) || idx < 0 || idx >= N) return json({ error: "bad index" }, 400);
+      const root = await treeRoot(env, N);
+      return json({ origin: RLOG_ORIGIN, index: idx, tree_size: N, root: btoa(String.fromCharCode(...root)), proof: await proofFor(env, idx, N), checkpoint: await signedCheckpoint(env, N, root) }, 200, { "cache-control": "public, max-age=60" });
+    }
+    if (url.pathname.startsWith("/receipt/") && request.method === "GET") {
+      const idx = Number(url.pathname.slice("/receipt/".length));
+      const r = Number.isInteger(idx) && idx >= 0 ? await getReceipt(env, idx) : { status: 400, error: "bad index" };
+      const esc = (x) => String(x).replace(/&/g, "&amp;").replace(/</g, "&lt;");
+      const body = r.status === 200
+        ? `<h1>Receipt #${idx}</h1><p class="k">${esc(r.receipt.payload.ts)} · action <b>${esc(r.receipt.payload.action)}</b>${r.receipt.payload.demo ? " · <b>DEMO</b>" : ""}</p>
+           <table>${["agent_id","tool","input_hash","output_hash"].map((k)=>`<tr><td class="k">${k}</td><td><code>${esc(r.receipt.payload[k] ?? "—")}</code></td></tr>`).join("")}
+           <tr><td class="k">leaf</td><td><code>${esc(r.receipt.leaf)}</code></td></tr>
+           <tr><td class="k">tree</td><td>index ${idx} of ${r.receipt.tree_size} · root <code>${esc(r.receipt.root)}</code></td></tr></table>
+           <div class="box"><b>Checkpoint (C2SP signed note)</b><pre>${esc(r.receipt.checkpoint)}</pre></div>
+           <p class="k">Verify offline with <a href="https://github.com/gblinproject/gblin-treasury-risk-regime">verify-receipt.mjs</a> — this page is a convenience, not the proof. A seal proves existence and time; it is not a compliance certificate.</p>
+           <p class="k">JSON: <a href="/v1/receipt/${idx}">/v1/receipt/${idx}</a> · <a href="/log">about this log</a></p>`
+        : `<h1>Receipt not found</h1><p class="k">${esc(r.error)}</p>`;
+      const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>GBLIN Receipt #${idx}</title>
+<style>body{font:15px/1.55 system-ui,sans-serif;max-width:860px;margin:2rem auto;padding:0 1rem;color:#1a1a1a;background:#fff}code,pre{font-family:ui-monospace,monospace;font-size:.82em;word-break:break-all;white-space:pre-wrap}table{border-collapse:collapse;width:100%}td{padding:.3rem .5rem;border-bottom:1px solid #e5e5e5;vertical-align:top}.k{color:#555}.box{background:#f6f6f6;border-radius:8px;padding:.9rem 1.1rem;margin:1rem 0}
+@media(prefers-color-scheme:dark){body{background:#111;color:#e6e6e6}td{border-color:#2c2c2c}.box{background:#1c1c1c}}</style></head><body>${body}</body></html>`;
+      return new Response(html, { status: r.status === 200 ? 200 : 404, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=60", ...CORS } });
     }
 
     // WITNESS — indice pubblico (chiave di verifica, ultimo checkpoint cofirmato per log)
@@ -1011,7 +1187,8 @@ export default {
           // failure (one promise's tx fails) leaves the marker behind, so the very
           // next 10-min tick retries the missing seal instead of waiting a day.
           const done = await coherenceAttestClosedDay(env);
-          if (done) await env.COHERENCE.put("attest:lastRun", today);
+          const anchored = await rlogAnchorDaily(env);
+          if (done && anchored) await env.COHERENCE.put("attest:lastRun", today);
         } else {
           // Giro di sonde del catalogo SOLO nei tick senza sigillo: il budget
           // free è 50 subrequest/invocazione e il sigillo ne consuma parecchi.

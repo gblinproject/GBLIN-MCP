@@ -41,6 +41,33 @@ It exposes four native Actions (`CHECK_GBLIN_TREASURY_HEALTH`, `INVEST_IDLE_USDC
 
 ---
 
+## AI Action Receipts — a witnessed transparency log for what your agent did
+
+The problem this attacks is the #1 barrier to AI adoption in 2026: **nobody can
+prove, after the fact, exactly what an AI did** (surveys: workers burn 2–4 h/week
+verifying AI output; 70% of orgs say they cannot govern their agents). Our answer
+is the smallest honest primitive: a public, append-only **RFC 6962 transparency
+log** for AI actions. You send **hashes only** (never content); you get back a
+portable receipt any third party can verify offline, forever.
+
+```
+receipt = canonical payload
+        + Ed25519 signature            (key: gblin.digital/receipts-log)
+        + RFC 6962 inclusion proof     (leaf → Merkle root)
+        + C2SP signed checkpoint       (origin, tree size, root)
+```
+
+- Seal (paid, unlimited): `POST https://gblin.digital/api/x402/seal` — $0.01 USDC via x402.
+- Seal (demo, 5/day/IP): `POST <worker>/v1/seal-demo` or MCP tool `seal_action_demo`.
+- Read free forever: `<worker>/v1/receipt/:index` · `/log` · `/log/checkpoint` · `/log/proof/:index` · human page `/receipt/:index`.
+- Daily EAS anchor on Base of the tree root (verifiable on base.easscan.org, schema `0x9f433a96…`, promiseId `keccak256("gblin-receipts-log")`).
+- **Offline verifier, zero dependencies:** [`verify-receipt.mjs`](./verify-receipt.mjs) — `node verify-receipt.mjs receipt.json`.
+
+A seal proves **existence and time**, independently witnessed (the same C2SP
+witness network that cosigns transparency logs — we already witness-exchange
+with a third-party log operator). It is **not** a compliance certificate and
+**not** an endorsement of the content. Worker: `<worker>` = `https://gblin-mcp.gblin-mcp-worker.workers.dev`.
+
 ## Coherence Proof — verify GBLIN keeps its promises
 
 GBLIN pre-registers hash-pinned public promises, then runs an automaton that probes them every 10 minutes and seals each closed day as an [EAS attestation](https://base.easscan.org/schema/view/0x9f433a96467ab75530009970e5aa938ec94d8a49f08f66e7381822d557b448ef) on Base. Reading is free forever; the paid service is being observed — the certifier submits itself to its own instrument first.
