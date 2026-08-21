@@ -54,6 +54,7 @@ import {
 } from "./helpers.js";
 import { PACKAGE_VERSION } from "./config.js";
 import { findKeeperBounty } from "./keeper.js";
+import { RECEIPT_TOOL_DEFINITIONS, RECEIPT_TOOL_HANDLERS } from "./receipts.js";
 
 // ───────────────────────────────────────────────────────────────────────────
 // SwapRouter02 (Uniswap V3 on Base) — used for USDC→WETH exactInputSingle
@@ -1463,6 +1464,7 @@ export const TOOL_DEFINITIONS = [
   FIND_KEEPER_BOUNTY_DEFINITION,
   MARKET_RISK_DEFINITION,
   VERIFY_ATTESTATION_DEFINITION,
+  ...RECEIPT_TOOL_DEFINITIONS,
 ];
 
 export const TOOL_HANDLERS: Record<string, (args: unknown) => Promise<unknown>> = {
@@ -1482,4 +1484,8 @@ export const TOOL_HANDLERS: Record<string, (args: unknown) => Promise<unknown>> 
   analyze_treasury_health: requirePayment({ priceUsdc: "0.003", priceLabel: "$0.003 USDC per call" }, handleAnalyzeTreasury),
   find_keeper_bounty:      requirePayment({ priceUsdc: "0.001", priceLabel: "$0.001 USDC per call" }, handleFindKeeperBounty),
   get_market_risk_regime:  requirePayment({ priceUsdc: "0.002", priceLabel: "$0.002 USDC per call" }, handleMarketRiskRegime),
+
+
+  // ── AI Action Receipts (free demo + free reads; paid seals via x402 HTTP) ──
+  ...RECEIPT_TOOL_HANDLERS,
 };

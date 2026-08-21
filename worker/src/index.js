@@ -174,7 +174,7 @@ const TOOLS = [
   {
     name: "seal_action_demo",
     description:
-      "AI ACTION RECEIPTS (demo, 5/day/IP): seal the HASHES of an AI action into GBLIN's public append-only transparency log and get back a portable receipt — Ed25519 signature + RFC 6962 inclusion proof + C2SP signed checkpoint, root anchored daily on Base via EAS. Input/output go in as hashes only; the action/agent_id/tool/meta strings you send are published in the public log (identifiers, never secrets). Proves existence and time — not a compliance certificate. Independent witness cosigning of the checkpoint: invitation open. Unlimited seals: $0.01 via x402 (see how_to_seal_paid).",
+      "AI ACTION RECEIPTS (demo, 5/day/IP): seal the HASHES of an AI action into GBLIN's public append-only transparency log and get back a portable receipt — Ed25519 signature + RFC 6962 inclusion proof + operator-signed C2SP checkpoint, root anchored daily on Base via EAS. Input/output go in as hashes only; the action/agent_id/tool/meta strings you send are published in the public log (identifiers, never secrets). Proves existence and time — not a compliance certificate. Independent witness cosigning of the checkpoint: invitation open. Unlimited seals: $0.01 via x402 (see how_to_seal_paid).",
     inputSchema: {
       type: "object",
       properties: {
@@ -830,7 +830,7 @@ async function callTool(name, env, args = {}) {
     }
     case "how_to_seal_paid":
       return {
-        what: "AI Action Receipts: a portable, signed receipt for any AI action, in a public append-only transparency log. Input/output go in as HASHES only (the action label and metadata you send are published); you get back signature + RFC 6962 inclusion proof + C2SP signed checkpoint; the tree root is anchored daily on Base (EAS). Evidence of existence and time — NOT a compliance certificate. Independent witness cosigning: invitation open.",
+        what: "AI Action Receipts: a portable, signed receipt for any AI action, in a public append-only transparency log. Input/output go in as HASHES only (the action label and metadata you send are published); you get back signature + RFC 6962 inclusion proof + operator-signed C2SP checkpoint; the tree root is anchored daily on Base (EAS). Evidence of existence and time — NOT a compliance certificate. Independent witness cosigning: invitation open.",
         paid_endpoint: `${SITE}/api/x402/seal`,
         price: "0.01 USDC on Base via x402 (unlimited)",
         demo: "MCP tool seal_action_demo or POST https://gblin-mcp.gblin-mcp-worker.workers.dev/v1/seal-demo (5/day/IP, receipts marked demo:true)",
