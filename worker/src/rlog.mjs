@@ -46,7 +46,8 @@ const nodeHash = (l, r) => sha256(cat(Uint8Array.of(0x01), l, r));
 export function canonicalize(v) {
   if (v === null || typeof v !== "object") return JSON.stringify(v);
   if (Array.isArray(v)) return "[" + v.map(canonicalize).join(",") + "]";
-  return "{" + Object.keys(v).sort().map((k) => JSON.stringify(k) + ":" + canonicalize(v[k])).join(",") + "}";
+  return "{" + Object.keys(v).filter((k) => v[k] !== undefined).sort()
+    .map((k) => JSON.stringify(k) + ":" + canonicalize(v[k])).join(",") + "}";
 }
 
 // ---------- chiave del log ----------
@@ -89,12 +90,14 @@ export async function anchorInfo(env, index) {
   };
 }
 export const PROVENANCE_LEVELS = ["self-reported", "server-observed", "externally-verified"];
-// Operator receipts (this Worker sealing its own actions, meta.self_sealed=true) are "server-observed".
+// Operator receipts = sealed by this Worker about its OWN actions. Marked with the signed
+// payload field `by: "operator"`, which only the internal operator path can set: callers cannot
+// forge it (validateSealInput never copies it from the request body), so a paying customer
+// cannot self-declare "server-observed".
 export function provenanceFor(payload) {
-  let self = false;
-  try { self = !!(payload && payload.meta && JSON.parse(payload.meta).self_sealed); } catch {}
+  const self = !!(payload && payload.by === "operator");
   return { ...PROVENANCE, level: self ? "server-observed" : "self-reported",
-    meaning: self ? "This server performed the sealed action itself (operator receipt, meta.self_sealed=true); the log proves recording time, the meta carries the on-chain tx." : PROVENANCE.meaning };
+    meaning: self ? "This server performed the sealed action itself and sealed it (payload.by = \"operator\", set server-side only); the log proves the record and its time, and meta carries the on-chain tx of that action." : PROVENANCE.meaning };
 }
 export const PROVENANCE = {
   level: "self-reported",
@@ -179,7 +182,7 @@ export function validateSealInput(body) {
     output_hash: body.output_hash != null ? s(body.output_hash).replace(/^0x/, "").toLowerCase() : null };
 }
 
-export async function sealAction(env, input, { demo = false } = {}) {
+export async function sealAction(env, input, { demo = false, operator = false } = {}) {
   if (!env.COHERENCE) return { status: 503, error: "log storage unavailable" };
   if (!env.RLOG_KEY) return { status: 503, error: "log key not armed" };
   const v = validateSealInput(input);
@@ -190,8 +193,9 @@ export async function sealAction(env, input, { demo = false } = {}) {
     v: 1, log: RLOG_ORIGIN, index: N, ts: new Date().toISOString(),
     action: v.action, agent_id: v.agent || null, tool: v.tool || null,
     input_hash: v.input_hash, output_hash: v.output_hash, meta: v.meta,
-    demo: demo || undefined,
   };
+  if (operator) payload.by = "operator"; // solo il percorso interno puo' impostarlo
+  if (demo) payload.demo = true;
   const canonical = canonicalize(payload);
   const leaf = await leafHash(te.encode(canonical));
 
@@ -241,6 +245,8 @@ export async function getReceipt(env, index) {
   if (!(index >= 0 && index < N)) return { status: 404, error: "no such receipt" };
   const canonical = await env.COHERENCE.get(`rlog:entry:${index}`);
   if (!canonical) return { status: 404, error: "entry missing" };
+  let parsed = null, malformed = false;
+  try { parsed = JSON.parse(canonical); } catch { malformed = true; }
   const root = await treeRoot(env, N);
   const [checkpoint, proof] = await Promise.all([signedCheckpoint(env, N, root), proofFor(env, index, N)]);
   const kp = parseKey(env.RLOG_KEY);
@@ -250,13 +256,17 @@ export async function getReceipt(env, index) {
   return {
     status: 200,
     receipt: {
-      format: "gblin-receipt/v1", payload: JSON.parse(canonical),
+      format: "gblin-receipt/v1", payload: parsed,
       leaf: b64(await leafHash(te.encode(canonical))), index, tree_size: N, root: b64(root),
       signature: b64(sig),
       verifier_key: await rlogVerifierKey(kp.pub),
       inclusion_proof: proof, checkpoint,
       anchor: await anchorInfo(env, index),
-      provenance: provenanceFor(JSON.parse(canonical)),
+      provenance: provenanceFor(parsed || {}),
+      ...(malformed ? { malformed_entry: {
+        reason: "This entry was written on 2026-08-21 by a canonicalization bug that emitted a literal `undefined` for an absent field, so its stored record is not valid JSON and cannot be re-derived. The leaf and the tree are untouched; the entry stays in the log because an append-only log is never rewritten. Fixed the same day; entries after index 14 are clean.",
+        raw_record: canonical,
+      } } : {}),
     },
   };
 }

@@ -44,7 +44,7 @@ const FALLBACK_RPCS = [
 ];
 const SITE = "https://gblin.digital";
 const SUPPORTED_PROTOCOLS = ["2025-06-18", "2025-03-26", "2024-11-05"];
-const SERVER_INFO = { name: "gblin-mcp-http", version: "0.5.1" };
+const SERVER_INFO = { name: "gblin-mcp-http", version: "0.5.2" };
 
 // ── Tools ───────────────────────────────────────────────────────────────────
 
@@ -68,6 +68,7 @@ const RECEIPT_SCHEMA = {
         v: { type: "integer" }, log: { type: "string" }, index: { type: "integer" }, ts: { type: "string" },
         action: { type: "string" }, agent_id: { type: ["string", "null"] }, tool: { type: ["string", "null"] },
         input_hash: { type: "string" }, output_hash: { type: ["string", "null"] }, meta: {}, demo: { type: "boolean" },
+        by: { type: "string", enum: ["operator"], description: "Present only when this server sealed its own action; set server-side, cannot be supplied by a caller" },
       },
       required: ["v", "log", "index", "ts", "action", "input_hash"],
     },
@@ -609,8 +610,8 @@ async function sealOperatorAction(env, { action, subject, tx, meta }) {
     await sealAction(env, {
       action, input_hash: await sha256hex(subject), output_hash: tx ? await sha256hex(tx) : undefined,
       agent_id: "gblin.digital/coherence-observer", tool: "cloudflare-worker-cron",
-      meta: JSON.stringify({ operator: "gblin.digital", self_sealed: true, ...meta }).slice(0, 512),
-    }, { demo: false });
+      meta: JSON.stringify({ operator: "gblin.digital", ...meta }).slice(0, 512),
+    }, { demo: false, operator: true });
   } catch (e) { console.error("operator seal:", e && e.message); }
 }
 
@@ -1327,7 +1328,8 @@ export default {
       const tok = url.searchParams.get("token") || "";
       if (!env.CATALOG_TOKEN || tok !== env.CATALOG_TOKEN) return json({ error: "unauthorized" }, 401);
       let body; try { body = await request.json(); } catch { return json({ error: "invalid JSON" }, 400); }
-      const r = await sealAction(env, body, { demo: false });
+      const operator = url.searchParams.get("operator") === "1"; // solo per i sigilli delle NOSTRE azioni
+      const r = await sealAction(env, body, { demo: false, operator });
       return json(r.status === 200 ? r.receipt : { error: r.error }, r.status, { "cache-control": "no-store" });
     }
     if (url.pathname === "/v1/seal-demo" && request.method === "POST") {
