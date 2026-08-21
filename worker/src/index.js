@@ -44,7 +44,7 @@ const FALLBACK_RPCS = [
 ];
 const SITE = "https://gblin.digital";
 const SUPPORTED_PROTOCOLS = ["2025-06-18", "2025-03-26", "2024-11-05"];
-const SERVER_INFO = { name: "gblin-mcp-http", version: "0.5.2" };
+const SERVER_INFO = { name: "gblin-mcp-http", version: "0.5.3" };
 
 // ── Tools ───────────────────────────────────────────────────────────────────
 
@@ -959,8 +959,9 @@ function howtoAttestation() {
         flow:
           "GET the endpoint → HTTP 402 with the payment challenge in both the PAYMENT-REQUIRED header and the JSON body → sign an EIP-3009 USDC transferWithAuthorization for the `accepts[0]` requirements → retry with the payment header → receive the signed attestation. Any x402 client (x402-fetch, AgentKit, Coinbase CDP) handles this automatically.",
         free_sample: `${SITE}/api/x402/attestation-sample`,
+        attestor_address: "0x3ae65d36e8b1d82B0B80669E769A3dc300D543e4",
         verify_offline:
-          "Recompute hashTypedData over `eip712` and compare to `attestation_id`; if `signed`, recover the EIP-712 signer and check it equals `attestor`. Then check expires_at > now. Free verifier: npx @gblin-protocol/mcp-server → verify_risk_attestation.",
+          "Recompute hashTypedData over `eip712` and compare to `attestation_id`; if `signed`, recover the EIP-712 signer and require it to equal the pinned attestor address above (not merely the `attestor` field in the same response). Then check expires_at > now. Free verifier: npx @gblin-protocol/mcp-server → verify_risk_attestation.",
         stable_field_contract: [
           "regime (calm|elevated|crash)",
           "shield_active",
@@ -1114,6 +1115,12 @@ async function readResource(uri, env) {
       return {
         receipts_log: { origin: RLOG_ORIGIN, verifier_key: rlog, alg: "Ed25519 (C2SP signed note, key id 0x01)", signs: ["gblin-receipt/v1 receipts", "checkpoints"] },
         witness: { name: "gblin.digital/witness", verifier_key: witness, alg: "Ed25519 (C2SP tlog-cosignature v1, key id 0x04)", cosigns: "markovianprotocol.com/log" },
+        risk_attestation_attestor: {
+          address: "0x3ae65d36e8b1d82B0B80669E769A3dc300D543e4",
+          alg: "EIP-712 (secp256k1) over the attestation struct",
+          signs: "the paid risk attestation at https://gblin.digital/api/x402/attestation",
+          how_to_use: "Recover the signer from `signature` over `eip712` and require it to equal THIS address. Comparing it only with the `attestor` field the response itself carries proves nothing.",
+        },
         eas_attester_wallet: { address: "0x14d4d81233EAa95F071f514510661a2a873D83a1", role: "pays the daily EAS attestations on Base (Coherence days + receipts-log root)", note: "dedicated hot wallet, not the protocol owner" },
         rotation_policy: {
           trigger: "suspected compromise or scheduled rotation; never silent",
