@@ -44,7 +44,7 @@ const FALLBACK_RPCS = [
 ];
 const SITE = "https://gblin.digital";
 const SUPPORTED_PROTOCOLS = ["2025-06-18", "2025-03-26", "2024-11-05"];
-const SERVER_INFO = { name: "gblin-mcp-http", version: "0.3.0" };
+const SERVER_INFO = { name: "gblin-mcp-http", version: "0.3.1" };
 
 // ── Tools ───────────────────────────────────────────────────────────────────
 
@@ -121,7 +121,7 @@ const TOOLS = [
     name: "get_market_risk_regime",
     description:
       "Current BTC/ETH risk regime (calm | elevated | crash) with a suggested posture, read live from GBLIN's on-chain Crash Shield on Base (60s cache). Free and unsigned; a signed, verifiable-offline version is a paid x402 endpoint (resource gblin://howto/attestation).",
-    inputSchema: { type: "object", properties: {}, required: [] },
+    inputSchema: { type: "object", properties: {}, required: [], additionalProperties: false },
     annotations: { title: "Market risk regime (live, free)", ...RO },
     outputSchema: {
       type: "object",
@@ -159,7 +159,7 @@ const TOOLS = [
     name: "get_attestation_sample",
     description:
       "Static, permanently expired sample of the signed Risk Attestation (sample:true), same fields and EIP-712 schema as the paid one. Use it to build and test a parser/verifier.",
-    inputSchema: { type: "object", properties: {}, required: [] },
+    inputSchema: { type: "object", properties: {}, required: [], additionalProperties: false },
     annotations: { title: "Attestation sample (free, expired)", ...RO },
     outputSchema: {
       type: "object",
@@ -184,7 +184,7 @@ const TOOLS = [
     name: "get_agent_economy_stats",
     description:
       "Cumulative public counters of GBLIN's x402 endpoints: paid calls, unique payer wallets, USDC earned, with methodology disclosure. Cached 5 min.",
-    inputSchema: { type: "object", properties: {}, required: [] },
+    inputSchema: { type: "object", properties: {}, required: [], additionalProperties: false },
     annotations: { title: "Agent-economy stats (free, cached)", ...RO },
     outputSchema: {
       type: "object",
@@ -208,7 +208,7 @@ const TOOLS = [
     name: "get_protocol_info",
     description:
       "GBLIN llms.txt as plain text: contract addresses, endpoints, prices, payment flow, field contract of the attestation.",
-    inputSchema: { type: "object", properties: {}, required: [] },
+    inputSchema: { type: "object", properties: {}, required: [], additionalProperties: false },
     annotations: { title: "Protocol info / llms.txt (free)", ...RO },
     outputSchema: {
       type: "object",
@@ -226,14 +226,15 @@ const TOOLS = [
       type: "object",
       properties: {
         mode: { type: "string", enum: ["demo"], default: "demo", description: "Only 'demo' is available over MCP (5/day/IP). Paid seals go through x402 HTTP." },
-        action: { type: "string", description: "What the AI did, short label (<=128 chars)" },
-        input_hash: { type: "string", description: "sha256 hex (64 chars) of the input/prompt" },
-        output_hash: { type: "string", description: "sha256 hex of the output (optional)" },
-        agent_id: { type: "string", description: "Your agent identifier (optional, <=128)" },
-        tool: { type: "string", description: "Tool/model used (optional, <=128)" },
-        meta: { type: "string", description: "Extra JSON, <=512 chars (optional)" },
+        action: { type: "string", minLength: 1, maxLength: 128, description: "What the AI did, short label. PUBLISHED in the log." },
+        input_hash: { type: "string", pattern: "^[0-9a-fA-F]{64}$", description: "sha256 of the input/prompt, 64 hex chars" },
+        output_hash: { type: "string", pattern: "^[0-9a-fA-F]{64}$", description: "sha256 of the output, 64 hex chars (optional)" },
+        agent_id: { type: "string", maxLength: 128, description: "Your agent identifier (optional). PUBLISHED." },
+        tool: { type: "string", maxLength: 128, description: "Tool/model used (optional). PUBLISHED." },
+        meta: { type: "string", maxLength: 512, description: "Extra JSON object as a string (optional). PUBLISHED." },
       },
       required: ["mode", "action", "input_hash"],
+      additionalProperties: false,
     },
     annotations: { title: "Seal an AI action (demo receipt)", readOnlyHint: false, idempotentHint: false, openWorldHint: false },
     outputSchema: RECEIPT_SCHEMA,
@@ -241,7 +242,7 @@ const TOOLS = [
   {
     name: "get_receipt",
     description: "Receipt #index from GBLIN's receipts log, re-signed (Ed25519 is deterministic) with a fresh inclusion proof, the current signed checkpoint and the latest on-chain anchor. Free.",
-    inputSchema: { type: "object", properties: { index: { type: "integer", minimum: 0, description: "Receipt index in the log" } }, required: ["index"] },
+    inputSchema: { type: "object", properties: { index: { type: "integer", minimum: 0, description: "Receipt index in the log (0-based; current size at GET /log/checkpoint)" } }, required: ["index"], additionalProperties: false },
     annotations: { title: "Get a receipt by index", ...RO },
     outputSchema: RECEIPT_SCHEMA,
   },
@@ -252,6 +253,7 @@ const TOOLS = [
       type: "object",
       properties: { receipt: { type: "object", description: "The receipt JSON as returned by seal_action / get_receipt / GET /v1/receipt/:i (bare or wrapped in {receipt})" } },
       required: ["receipt"],
+      additionalProperties: false,
     },
     annotations: { title: "Verify a receipt (pure math)", readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     outputSchema: {
@@ -270,7 +272,7 @@ const TOOLS = [
     name: "get_coherence_report",
     description:
       "Kept/violated tallies for GBLIN's pre-registered, hash-pinned promises (attestation uptime, counter honesty), probed every 10 minutes; each closed UTC day is sealed on Base as an EAS attestation (schema 0x9f433a96…). Self-observation only in v0. Free.",
-    inputSchema: { type: "object", properties: {}, required: [] },
+    inputSchema: { type: "object", properties: {}, required: [], additionalProperties: false },
     annotations: { title: "Coherence report (promises vs conduct, free)", ...RO },
     outputSchema: {
       type: "object",
