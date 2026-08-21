@@ -30,7 +30,7 @@ import { catalogTick, catalogReport, catalogFull, observatoryPage, observatoryJs
 // su loro invito. Zero costo: 1 lettura + 1 firma per tick; niente chain.
 // Secret WITNESS_KEY assente → disattivato in silenzio (fail-safe).
 import { witnessTick, witnessIndex, witnessLatestNote, witnessAddCheckpoint, witnessHistory, witnessDiscoverLogs, witnessConfiguredLogs, WITNESSED_LOGS } from "./witness.mjs";
-import { sealAction, getReceipt, rlogStatus, demoAllowed, treeRoot, signedCheckpoint, proofFor, verifyReceipt, anchorConsistency, consistencyProof, leaves, PROVENANCE_LEVELS, RLOG_ORIGIN } from "./rlog.mjs";
+import { sealAction, getReceipt, rlogStatus, demoAllowed, treeRoot, signedCheckpoint, proofFor, verifyReceipt, anchorConsistency, consistencyProof, leaves, pushToWitnesses, witnessState, PROVENANCE_LEVELS, RLOG_ORIGIN } from "./rlog.mjs";
 
 const GBLIN = "0x36C81d7E1966310F305eA637e761Cf77F90852f0";
 const BASKET_SELECTOR = "0x8c7e0875"; // basket(uint256)
@@ -1365,6 +1365,19 @@ export default {
       const r = await getReceipt(env, idx);
       return json(r.status === 200 ? r.receipt : { error: r.error }, r.status, { "cache-control": "public, max-age=60" });
     }
+    if (url.pathname === "/internal/witness-push" && request.method === "POST") {
+      const tok = url.searchParams.get("token") || "";
+      if (!env.CATALOG_TOKEN || tok !== env.CATALOG_TOKEN) return json({ error: "unauthorized" }, 401);
+      return json(await pushToWitnesses(env, { force: url.searchParams.get("force") === "1" }), 200, { "cache-control": "no-store" });
+    }
+    if (url.pathname === "/log/witnesses" && request.method === "GET") {
+      return json({
+        origin: RLOG_ORIGIN,
+        what: "Third-party witnesses invited to cosign this log's checkpoint (c2sp.org/tlog-witness). A cosignature attests only that the log stayed append-only between the sizes that witness has seen — it says nothing about whether a sealed action is true.",
+        how_to_join: "Pin our origin and verifier key (GET /log — verifier_key), then accept POST add-checkpoint pushes from us; we push on every size change. Audit first with GET /log/leaves and GET /log/consistency.",
+        witnesses: await witnessState(env),
+      }, 200, { "cache-control": "public, max-age=60" });
+    }
     if (url.pathname === "/log/checkpoint" && request.method === "GET") {
       const st = await rlogStatus(env);
       if (!st.checkpoint) return json({ error: "log empty or not armed", origin: st.origin, verifier_key: st.verifier_key }, 404);
@@ -1378,7 +1391,7 @@ export default {
         seal_demo: "POST /v1/seal-demo (5/day/IP, marked demo:true)",
         read: "GET /v1/receipt/:index (free forever) · GET /log/proof/:index · GET /log/checkpoint",
         explorer: "GET /receipt/:index (human page)",
-        for_witnesses: "GET /log/checkpoint (C2SP signed note) · GET /log/consistency?old=<m>&new=<n> (RFC 6962 append-only proof) · GET /log/leaves?start=&end= (raw records, recompute the tree yourself) · GET /log/proof/<i> (inclusion). Cosigning invitation open.",
+        for_witnesses: "GET /log/checkpoint (C2SP signed note) · GET /log/consistency?old=<m>&new=<n> (RFC 6962 append-only proof) · GET /log/leaves?start=&end= (raw records, recompute the tree yourself) · GET /log/proof/<i> (inclusion) · GET /log/witnesses (who cosigns, and how to join). We also push our checkpoints with c2sp.org/tlog-witness (POST add-checkpoint) to any witness that configures our origin. Cosigning invitation open.",
         anchor: "tree root anchored daily on Base via EAS (schema " + "0x9f433a96..., promiseId keccak256('gblin-receipts-log'))",
         offline_verifier: "verify-receipt.mjs in github.com/gblinproject/gblin-treasury-risk-regime (zero deps)",
         design_note: "https://github.com/gblinproject/gblin-treasury-risk-regime/blob/main/docs/ai-action-transparency-log.md — what a receipt proves and what it does not, wire formats, and the honest scale of this log",
@@ -1584,6 +1597,7 @@ export default {
       // Witness first: 1-2 subrequest, mai in conflitto col budget del sigillo.
       await witnessTick(env).catch((e) => console.error("witness:", e.message));
       await coherenceObserve(env);
+      await pushToWitnesses(env).catch((e) => console.error("witness push:", e && e.message));
       if (env.COHERENCE) {
         const today = utcDay();
         const marker = await env.COHERENCE.get("attest:lastRun");

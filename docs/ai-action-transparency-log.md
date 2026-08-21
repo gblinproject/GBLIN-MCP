@@ -74,3 +74,22 @@ invalid JSON: the receipt was issued correctly, but re-reading it returned HTTP 
 was a demo, so the bug stayed invisible for two weeks. We found it by paying for our own product once. Fixed on
 21 August; the three records written while the bug was live remain in the log with a `malformed_entry` field
 that states the cause and the date, because an append-only log is not rewritten — it is disclosed.
+
+## Witnessing (added 21 August 2026)
+
+The log is operator-signed. That is a weak claim on its own: an operator who controls the key can, in
+principle, sign two different trees. The fix is a third party that has seen the log at two sizes and
+can say it did not change underneath.
+
+We implement the log side of [c2sp.org/tlog-witness](https://c2sp.org/tlog-witness): whenever the tree
+grows, the worker POSTs `old <n>` plus an RFC 6962 consistency proof plus the signed note to each
+configured witness, and stores the cosignature line it gets back. A cosignature is bound to one
+`(origin, size, root)` triple, so we serve it in `GET /log/checkpoint` only while it still matches the
+current size — never re-attached to a later tree.
+
+`GET /log/witnesses` lists the witnesses, the size each one has cosigned, and the last error if a push
+failed. Anyone auditing us can start from `GET /log/leaves`, rebuild the tree, and compare the root to
+the signed note before deciding whether a cosignature is worth anything.
+
+What a cosignature attests: that the log stayed append-only between the sizes that witness saw.
+Nothing about whether a sealed action is true. We will not word it more strongly than that.

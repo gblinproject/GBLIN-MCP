@@ -189,12 +189,101 @@ export async function leaves(env, start, end) {
 }
 
 // ---------- checkpoint (signed note C2SP) ----------
-export async function signedCheckpoint(env, N, root) {
+const SEP = "— ";   // em dash + spazio: separatore delle firme nelle signed note
+
+// ---------- push dei nostri checkpoint ai witness (c2sp.org/tlog-witness) ----------
+// Il LOG spinge: manda "old <n>" + prova di consistenza + il checkpoint firmato e
+// riceve una riga di cofirma. La cofirma vale SOLO per quella (origin, size, root):
+// la conserviamo con la size e la serviamo nel checkpoint solo quando combacia.
+export const WITNESSES = [
+  {
+    id: "markovian",
+    name: "markovianprotocol.com/witness",
+    url: "https://witness.markovianprotocol.com/add-checkpoint",
+    vkey: "markovianprotocol.com/witness+41b8827f+BJKLl8rBYM0oUxSaWh9rjTldTprEpYj/SWVIGgacA9XC",
+  },
+];
+const ckey = (id) => `rlog:cosign:${id}`;
+
+export async function cosignaturesFor(env, N) {
+  const out = [];
+  for (const w of WITNESSES) {
+    try {
+      const v = JSON.parse((await env.COHERENCE.get(ckey(w.id))) || "null");
+      if (v && v.size === N && v.line) out.push(v.line);
+    } catch { /* nessuna cofirma valida per questa size */ }
+  }
+  return out;
+}
+
+export async function witnessState(env) {
+  const out = [];
+  for (const w of WITNESSES) {
+    let v = null;
+    try { v = JSON.parse((await env.COHERENCE.get(ckey(w.id))) || "null"); } catch {}
+    out.push({ witness: w.name, vkey: w.vkey, endpoint: w.url, cosigned_size: v?.size ?? null, at: v?.at ?? null, last_error: v?.error ?? null });
+  }
+  return out;
+}
+
+export async function pushToWitnesses(env, { force = false, fetchImpl = fetch } = {}) {
+  if (!env.RLOG_KEY) return { skipped: "no key" };
+  const N = Number((await env.COHERENCE.get("rlog:size")) || 0);
+  if (!N) return { skipped: "empty log" };
+  const root = await treeRoot(env, N);
+  const note = await signedCheckpoint(env, N, root, { withCosignatures: false });
+  const results = [];
+  for (const w of WITNESSES) {
+    let prev = null;
+    try { prev = JSON.parse((await env.COHERENCE.get(ckey(w.id))) || "null"); } catch {}
+    if (prev && prev.size === N && prev.line) { results.push({ witness: w.name, ok: true, size: N, cached: true }); continue; }
+    // Backoff: se l'ultimo tentativo per QUESTA size e' fallito da meno di un'ora, non insistere.
+    if (!force && prev && prev.error && prev.triedSize === N && Date.now() - Date.parse(prev.triedAt || 0) < 3600e3) {
+      results.push({ witness: w.name, ok: false, skipped: "backoff", last_error: prev.error }); continue;
+    }
+    const attempt = async (old) => {
+      const proof = old === 0 ? [] : await consistencyProof(env, old, N);
+      const body = [`old ${old}`, ...proof].join("\n") + "\n\n" + note;
+      const res = await fetchImpl(w.url, {
+        method: "POST",
+        headers: { "content-type": "text/plain; charset=utf-8", "user-agent": "gblin-receipts-log/1 (+https://gblin.digital)" },
+        body,
+      });
+      return { status: res.status, text: (await res.text()).trim() };
+    };
+    try {
+      let r = await attempt(prev?.size || 0);
+      if (r.status === 409) {                    // il witness ne tiene un'altra: riparti dalla sua
+        const held = Number(r.text.trim().split(/\s+/).pop());
+        if (Number.isInteger(held) && held >= 0 && held <= N) r = await attempt(held);
+      }
+      if (r.status === 200 && r.text.startsWith(SEP)) {
+        await env.COHERENCE.put(ckey(w.id), JSON.stringify({ size: N, root: b64(root), line: r.text.split("\n")[0].trim(), at: new Date().toISOString(), error: null }));
+        results.push({ witness: w.name, ok: true, size: N });
+      } else {
+        const err = `HTTP ${r.status}: ${r.text.slice(0, 160)}`;
+        await env.COHERENCE.put(ckey(w.id), JSON.stringify({ ...(prev || {}), error: err, triedSize: N, triedAt: new Date().toISOString() }));
+        results.push({ witness: w.name, ok: false, status: r.status, body: r.text.slice(0, 160) });
+      }
+    } catch (e) {
+      const err = String(e?.message || e);
+      await env.COHERENCE.put(ckey(w.id), JSON.stringify({ ...(prev || {}), error: err, triedSize: N, triedAt: new Date().toISOString() }));
+      results.push({ witness: w.name, ok: false, error: err });
+    }
+  }
+  return { size: N, root: b64(root), results };
+}
+
+export async function signedCheckpoint(env, N, root, { withCosignatures = true } = {}) {
   const kp = parseKey(env.RLOG_KEY);
   const body = `${RLOG_ORIGIN}\n${N}\n${b64(root)}\n`;
   const sig = new Uint8Array(await crypto.subtle.sign({ name: "Ed25519" }, await signer(kp), te.encode(body)));
   const kh = await keyHash(RLOG_ORIGIN, 0x01, kp.pub);
-  return body + "\n" + `— ${RLOG_ORIGIN} ${b64(cat(kh, sig))}` + "\n";
+  let note = body + "\n" + `${SEP}${RLOG_ORIGIN} ${b64(cat(kh, sig))}` + "\n";
+  if (withCosignatures) {
+    for (const line of await cosignaturesFor(env, N)) note += line + "\n";
+  }
+  return note;
 }
 
 // ---------- append + ricevuta ----------
