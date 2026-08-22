@@ -184,7 +184,7 @@ export async function witnessHistory(env, id) {
 // State in KV (binding COHERENCE, same namespace as the coherence automaton):
 //   witness:<id>:last   {size, root(b64), ts, cosignedNote, logSigOk:true}
 //   witness:<id>:err    {at, error}   (cleared on success)
-//   witness:<id>:count  number of cosignatures ever produced
+//   witness:<id>:count  contatore STORICO (non piu' scritto: ora vive dentro :last come .count)
 export async function witnessTick(env, fetchImpl = fetch) {
   if (!env.COHERENCE || !env.WITNESS_KEY) return { skipped: "not armed" };
   let keyPair;
@@ -219,10 +219,11 @@ export async function witnessTick(env, fetchImpl = fetch) {
 
       const { line, ts } = await cosign(note, keyPair);
       const cosignedNote = text.endsWith("\n") ? text + line + "\n" : text + "\n" + line + "\n";
-      await env.COHERENCE.put(kLast, JSON.stringify({ size: note.size, root: b64(note.root), ts, cosignedNote, firstSeen: prev?.firstSeen || ts }));
+      // Il contatore sta DENTRO kLast: su Cloudflare free il budget e' 1000 scritture/giorno
+      // e una chiave separata per il conteggio ne bruciava 144 al giorno per niente.
+      const count = (Number.isInteger(prev?.count) ? prev.count : Number((await env.COHERENCE.get(kCount)) || 0)) + 1;
+      await env.COHERENCE.put(kLast, JSON.stringify({ size: note.size, root: b64(note.root), ts, cosignedNote, count, firstSeen: prev?.firstSeen || ts }));
       await appendHistory(env, log.id, { size: note.size, root: b64(note.root), ts, via: "fetch", note: cosignedNote });
-      const count = Number((await env.COHERENCE.get(kCount)) || 0) + 1;
-      await env.COHERENCE.put(kCount, String(count));
       await env.COHERENCE.delete(kErr);
       out[log.id] = { cosigned: true, size: note.size, ts, count };
     } catch (e) {
@@ -335,10 +336,10 @@ export async function witnessAddCheckpoint(env, bodyText) {
   if (!prev || note.size > prev.size) {
     const text = bodyText.slice(sep + 2);
     const cosignedNote = text.endsWith("\n") ? text + line + "\n" : text + "\n" + line + "\n";
-    await env.COHERENCE.put(kLast, JSON.stringify({ size: note.size, root: b64(note.root), ts, cosignedNote, firstSeen: prev?.firstSeen || ts, via: "push" }));
+    const pushCount = (Number.isInteger(prev?.count) ? prev.count : Number((await env.COHERENCE.get(kCount)) || 0)) + 1;
+    await env.COHERENCE.put(kLast, JSON.stringify({ size: note.size, root: b64(note.root), ts, cosignedNote, count: pushCount, firstSeen: prev?.firstSeen || ts, via: "push" }));
     await appendHistory(env, log.id, { size: note.size, root: b64(note.root), ts, via: "push", note: cosignedNote });
-    const count = Number((await env.COHERENCE.get(kCount)) || 0) + 1;
-    await env.COHERENCE.put(kCount, String(count));
+    const count = pushCount;
     await env.COHERENCE.delete(kErr);
   }
   return { status: 200, body: line + "\n" };
@@ -354,7 +355,7 @@ export async function witnessIndex(env) {
     if (env.COHERENCE) {
       try { last = JSON.parse((await env.COHERENCE.get(`witness:${log.id}:last`)) || "null"); } catch { /* none */ }
       try { err = JSON.parse((await env.COHERENCE.get(`witness:${log.id}:err`)) || "null"); } catch { /* none */ }
-      count = Number((await env.COHERENCE.get(`witness:${log.id}:count`)) || 0);
+      count = Number.isInteger(last?.count) ? last.count : Number((await env.COHERENCE.get(`witness:${log.id}:count`)) || 0);
     }
     logs.push({
       id: log.id, origin: log.origin, log: log.base, pinnedLogKey: log.vkey, note: log.note,
@@ -385,7 +386,7 @@ export async function witnessIndex(env) {
       limits: "best effort, work-in-progress service run by one operator; not a production guarantee",
       ourOwnLog: {
         origin: "gblin.digital/receipts-log",
-        note: "We also operate an application transparency log for AI actions; it is operator-signed only and we are looking for witnesses.",
+        note: "We also operate an application transparency log for AI actions (gblin.digital/receipts-log). Since 2026-08-22 it is cosigned by markovianprotocol.com/witness — see /log/witnesses for who cosigns and at which size. More witnesses welcome: we speak the log side of c2sp.org/tlog-witness and push on every size change.",
         designNote: "https://github.com/gblinproject/gblin-treasury-risk-regime/blob/main/docs/ai-action-transparency-log.md",
         forWitnesses: "GET /log/checkpoint · /log/consistency?old=&new= · /log/leaves?start=&end= · /log/proof/<i>",
       },

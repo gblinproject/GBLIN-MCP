@@ -185,7 +185,18 @@ export async function leaves(env, start, end) {
     const c = await env.COHERENCE.get(`rlog:entry:${i}`);
     out.push(c === null ? null : c);
   }
-  return { start, end, size: N, encoding: "raw canonical JSON (gblin-canonical-json/1); leaf = SHA256(0x00 || record)", leaves: out };
+  // Onesta': quattro record (indici 11-14) NON sono JSON valido — contengono il token
+  // letterale `undefined` scritto dal bug del canonicalizzatore corretto il 21/08/2026.
+  // Le foglie restano quei byte esatti (un log append-only non si riscrive) e l'albero e'
+  // corretto, ma un consumatore che fa JSON.parse va in errore: va detto QUI, non solo nei doc.
+  const malformed = [];
+  for (let i = 0; i < out.length; i++) { try { JSON.parse(out[i]); } catch { malformed.push(start + i); } }
+  const res = { start, end, size: N, encoding: "raw record bytes; leaf = SHA256(0x00 || record). Normally gblin-canonical-json/1, but see malformed_indices", leaves: out };
+  if (malformed.length) {
+    res.malformed_indices = malformed;
+    res.malformed_note = "These records are NOT parseable JSON: they contain the literal token `undefined`, written by a canonicalizer bug fixed on 2026-08-21. They are hashed and served as the exact bytes they were appended with, because an append-only log is not rewritten. Hash them as opaque bytes; do not JSON.parse them.";
+  }
+  return res;
 }
 
 // ---------- checkpoint (signed note C2SP) ----------
@@ -226,6 +237,20 @@ export async function witnessState(env) {
   return out;
 }
 
+// Quale size tiene questo witness per il NOSTRO log? Il c2sp espone la nota cofirmata
+// sotto sha256(origin) in esadecimale minuscolo: la leggiamo e ne prendiamo la size.
+async function witnessHeldSize(w, fetchImpl = fetch) {
+  try {
+    const h = new Uint8Array(await crypto.subtle.digest("SHA-256", te.encode(RLOG_ORIGIN)));
+    const hex = [...h].map((b) => b.toString(16).padStart(2, "0")).join("");
+    const base = new URL(w.url); base.pathname = `/${hex}/checkpoint`;
+    const res = await fetchImpl(base.toString());
+    if (res.status !== 200) return null;
+    const n = Number((await res.text()).split("\n")[1]);
+    return Number.isInteger(n) ? n : null;
+  } catch { return null; }
+}
+
 export async function pushToWitnesses(env, { force = false, fetchImpl = fetch } = {}) {
   if (!env.RLOG_KEY) return { skipped: "no key" };
   const N = Number((await env.COHERENCE.get("rlog:size")) || 0);
@@ -253,8 +278,13 @@ export async function pushToWitnesses(env, { force = false, fetchImpl = fetch } 
     };
     try {
       let r = await attempt(prev?.size || 0);
-      if (r.status === 409) {                    // il witness ne tiene un'altra: riparti dalla sua
-        const held = Number(r.text.trim().split(/\s+/).pop());
+      // 409 = il witness ne tiene una piu' grande e la dichiara nel corpo.
+      // 422 = la prova non regge per la size che gli abbiamo dichiarato: succede quando
+      // il witness ci ha gia' registrati fuori banda (trust-on-first-use) e noi non lo
+      // sappiamo. In quel caso chiediamo a LUI quale size tiene e rifacciamo la prova.
+      if (r.status === 409 || r.status === 422) {
+        let held = Number(r.text.trim().split(/\s+/).pop());
+        if (!Number.isInteger(held) || held < 0 || held > N) held = await witnessHeldSize(w, fetchImpl);
         if (Number.isInteger(held) && held >= 0 && held <= N) r = await attempt(held);
       }
       if (r.status === 200 && r.text.startsWith(SEP)) {

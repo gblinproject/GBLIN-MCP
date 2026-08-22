@@ -942,7 +942,7 @@ async function callTool(rawName, env, args = {}) {
 
 function howtoSeal() {
   return {
-        what: "AI Action Receipts: a portable, signed receipt for any AI action, in a public append-only transparency log. Input/output go in as HASHES only (the action label and metadata you send are published); you get back signature + RFC 6962 inclusion proof + operator-signed C2SP checkpoint; the tree root is anchored daily on Base (EAS). Evidence of existence and time — NOT a compliance certificate. Independent witness cosigning: invitation open.",
+        what: "AI Action Receipts: a portable, signed receipt for any AI action, in a public append-only transparency log. Input/output go in as HASHES only (the action label and metadata you send are published); you get back signature + RFC 6962 inclusion proof + a C2SP checkpoint signed by us and cosigned by an independent witness (markovianprotocol.com/witness, since 2026-08-22); the tree root is anchored daily on Base (EAS). Evidence of existence and time — NOT a compliance certificate. A cosignature attests only that the log stayed append-only between the sizes that witness has seen; it says nothing about whether a sealed action is true.",
         paid_endpoint: `${SITE}/api/x402/seal`,
         price: "0.01 USDC on Base via x402 (unlimited)",
         demo: "MCP tool receipts.seal (mode demo) or POST https://gblin-mcp.gblin-mcp-worker.workers.dev/v1/seal-demo (5/day/IP, receipts marked demo:true)",
@@ -1386,12 +1386,12 @@ export default {
     if (url.pathname === "/log" && request.method === "GET") {
       const st = await rlogStatus(env);
       return json({ ...st,
-        what: "GBLIN AI Action Receipts — signed append-only RFC 6962 transparency log of sealed AI actions (input/output as hashes only; the action label and metadata you send are published). A seal proves existence and time; root anchored daily on Base via EAS. It is NOT a compliance certificate and NOT an endorsement. Independent witness cosigning of the checkpoint: invitation open.",
+        what: "GBLIN AI Action Receipts — signed append-only RFC 6962 transparency log of sealed AI actions (input/output as hashes only; the action label and metadata you send are published). A seal proves existence and time; root anchored daily on Base via EAS. It is NOT a compliance certificate and NOT an endorsement. The checkpoint is cosigned by an independent witness since 2026-08-22 (see /log/witnesses); that cosignature attests only that the log stayed append-only between the sizes it has seen. More witnesses welcome.",
         seal_paid: "POST https://gblin.digital/api/x402/seal ($0.01 USDC via x402)",
         seal_demo: "POST /v1/seal-demo (5/day/IP, marked demo:true)",
         read: "GET /v1/receipt/:index (free forever) · GET /log/proof/:index · GET /log/checkpoint",
         explorer: "GET /receipt/:index (human page)",
-        for_witnesses: "GET /log/checkpoint (C2SP signed note) · GET /log/consistency?old=<m>&new=<n> (RFC 6962 append-only proof) · GET /log/leaves?start=&end= (raw records, recompute the tree yourself) · GET /log/proof/<i> (inclusion) · GET /log/witnesses (who cosigns, and how to join). We also push our checkpoints with c2sp.org/tlog-witness (POST add-checkpoint) to any witness that configures our origin. Cosigning invitation open.",
+        for_witnesses: "GET /log/checkpoint (C2SP signed note) · GET /log/consistency?old=<m>&new=<n> (RFC 6962 append-only proof) · GET /log/leaves?start=&end= (raw records, recompute the tree yourself) · GET /log/proof/<i> (inclusion) · GET /log/witnesses (who cosigns, and how to join). We also push our checkpoints with c2sp.org/tlog-witness (POST add-checkpoint) to any witness that configures our origin. One witness cosigns today (markovianprotocol.com/witness); more are welcome.",
         anchor: "tree root anchored daily on Base via EAS (schema " + "0x9f433a96..., promiseId keccak256('gblin-receipts-log'))",
         offline_verifier: "verify-receipt.mjs in github.com/gblinproject/gblin-treasury-risk-regime (zero deps)",
         design_note: "https://github.com/gblinproject/gblin-treasury-risk-regime/blob/main/docs/ai-action-transparency-log.md — what a receipt proves and what it does not, wire formats, and the honest scale of this log",
@@ -1612,7 +1612,9 @@ export default {
         } else {
           // Giro di sonde del catalogo SOLO nei tick senza sigillo: il budget
           // free è 50 subrequest/invocazione e il sigillo ne consuma parecchi.
-          await catalogTick(env).catch((e) => console.error("catalog:", e.message));
+          // Una volta all'ora, non a ogni tick: il budget KV free e' 1000 scritture/giorno
+          // e il catalogo ne scriveva una ogni 10 minuti (144) per un dato che cambia di rado.
+          if (new Date().getUTCMinutes() < 10) await catalogTick(env).catch((e) => console.error("catalog:", e.message));
         }
       }
     })();
