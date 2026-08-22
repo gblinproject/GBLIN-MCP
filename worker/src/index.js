@@ -30,6 +30,8 @@ import { catalogTick, catalogReport, catalogFull, observatoryPage, observatoryJs
 // su loro invito. Zero costo: 1 lettura + 1 firma per tick; niente chain.
 // Secret WITNESS_KEY assente → disattivato in silenzio (fail-safe).
 import { witnessTick, witnessIndex, witnessLatestNote, witnessAddCheckpoint, witnessHistory, witnessDiscoverLogs, witnessConfiguredLogs, WITNESSED_LOGS } from "./witness.mjs";
+import { x402StaticChallenge } from "./x402-challenge.mjs";
+import { incidentFor, incidentResponse } from "./incidents.mjs";
 import { sealAction, getReceipt, rlogStatus, demoAllowed, treeRoot, signedCheckpoint, proofFor, verifyReceipt, anchorConsistency, consistencyProof, leaves, pushToWitnesses, witnessState, PROVENANCE_LEVELS, RLOG_ORIGIN } from "./rlog.mjs";
 
 const GBLIN = "0x36C81d7E1966310F305eA637e761Cf77F90852f0";
@@ -513,7 +515,12 @@ async function coherenceAttestClosedDay(env) {
         d.obs,
         keptBps,
         d.obs - d.kept,
-        p.file,
+        // Se il giorno ha violazioni e ne abbiamo scritto la nota, l'evidenza on-chain
+        // punta alla NOTA (che rimanda alla promessa), non solo al file della promessa:
+        // cosi' il conteggio e la spiegazione viaggiano insieme e per sempre.
+        d.obs - d.kept > 0 && incidentFor(day)
+          ? `https://gblin-mcp.gblin-mcp-worker.workers.dev/coherence/incident/${day}`
+          : p.file,
       ]);
 
       try {
@@ -1377,6 +1384,20 @@ export default {
         how_to_join: "Pin our origin and verifier key (GET /log — verifier_key), then accept POST add-checkpoint pushes from us; we push on every size change. Audit first with GET /log/leaves and GET /log/consistency.",
         witnesses: await witnessState(env),
       }, 200, { "cache-control": "public, max-age=60" });
+    }
+    // Sfida x402 anonima servita dal bordo (vedi x402-challenge.mjs). Ci arriva riscritta
+    // da una Project Routing Rule di Vercel quando la richiesta NON porta pagamento.
+    // Note d'incidente della Coerenza: /coherence/incident/<AAAA-MM-GG>
+    if (url.pathname.startsWith("/coherence/incident/") && request.method === "GET") {
+      return incidentResponse(url.pathname.split("/").pop());
+    }
+    // Vercel, riscrivendo verso un URL esterno, inoltra il PERCORSO ORIGINALE della
+    // richiesta, non quello scritto nella destinazione. Quindi rispondiamo sia sul nostro
+    // percorso sia su quello pubblico della webapp. (Scoperto il 22/08 con un 404 del Worker
+    // che sembrava un 404 di Vercel: il corpo era il nostro, 46 byte.)
+    if ((url.pathname === "/x402/attestation" || url.pathname === "/api/x402/attestation" || url.pathname === "/prova-bordo-x402")
+        && (request.method === "GET" || request.method === "HEAD")) {
+      return x402StaticChallenge(request);
     }
     if (url.pathname === "/log/checkpoint" && request.method === "GET") {
       const st = await rlogStatus(env);
